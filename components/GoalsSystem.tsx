@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { PlannerState, Goal, GoalTask, GoalContribution } from '../types';
-import { CATEGORY_ICONS, USERS } from '../constants';
+import { CATEGORY_ICONS } from '../constants';
 
 interface GoalsSystemProps {
   state: PlannerState;
@@ -19,6 +19,13 @@ const GoalsSystem: React.FC<GoalsSystemProps> = ({ state, actions }) => {
     goals.find(g => g.id === selectedGoalId) || null,
     [goals, selectedGoalId]
   );
+
+  const getOwnerName = (goal: Goal) => {
+    if (!goal.userId) return null;
+    if (goal.userId === state.currentUser.id) return state.currentUser.name;
+    if (goal.userId === state.partner.id) return state.partner.name;
+    return null;
+  };
 
   return (
     <div className="space-y-6">
@@ -42,6 +49,7 @@ const GoalsSystem: React.FC<GoalsSystemProps> = ({ state, actions }) => {
           <GoalCard 
             key={goal.id} 
             goal={goal} 
+            ownerName={getOwnerName(goal)}
             isOwner={activeTab === 'shared' || goal.userId === state.currentUser.id}
             onClick={() => setSelectedGoalId(goal.id)}
           />
@@ -77,9 +85,10 @@ const GoalsSystem: React.FC<GoalsSystemProps> = ({ state, actions }) => {
   );
 };
 
-const GoalCard = ({ goal, isOwner, onClick }: any) => {
+const GoalCard = ({ goal, ownerName, isOwner, onClick }: any) => {
   const mainIcon = goal.financialTarget ? '💰' : '🎯';
-  const ownerName = goal.userId === USERS.DAVID.id ? 'David' : goal.userId === USERS.CARLA.id ? 'Carla' : null;
+  const dueDateText = new Date(goal.targetDate).toLocaleDateString();
+  const dueTimeText = goal.targetTime ? ` ${goal.targetTime}` : '';
   
   return (
     <div 
@@ -94,7 +103,7 @@ const GoalCard = ({ goal, isOwner, onClick }: any) => {
           <div>
             <h3 className="font-bold text-stone-900 group-hover:text-emerald-700 transition-colors">{goal.title}</h3>
             <div className="flex items-center gap-2">
-              <p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold">Due: {new Date(goal.targetDate).toLocaleDateString()}</p>
+              <p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold">Due: {dueDateText}{dueTimeText}</p>
               {ownerName && (
                 <span className="text-[10px] bg-stone-100 px-1.5 py-0.5 rounded text-stone-500 font-bold uppercase">{ownerName}'s</span>
               )}
@@ -133,6 +142,9 @@ const GoalCard = ({ goal, isOwner, onClick }: any) => {
 
 const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, currentUser }: any) => {
   const [inputValue, setInputValue] = useState('');
+  const [subtaskDueDate, setSubtaskDueDate] = useState('');
+  const [subtaskStartTime, setSubtaskStartTime] = useState('11:00');
+  const [subtaskEndTime, setSubtaskEndTime] = useState('12:00');
 
   const calculateProgress = (updatedGoal: Goal) => {
     let progress = 0;
@@ -171,13 +183,19 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, currentUser }: any)
       const newTask: GoalTask = { 
         id: Math.random().toString(36).substr(2, 9), 
         text: inputValue, 
-        completed: false 
+        completed: false,
+        dueDate: subtaskDueDate || undefined,
+        startTime: subtaskDueDate ? subtaskStartTime : undefined,
+        endTime: subtaskDueDate ? subtaskEndTime : undefined
       };
       updatedGoal.tasks = [...(goal.tasks || []), newTask];
     }
     
     onUpdate(calculateProgress(updatedGoal));
     setInputValue('');
+    setSubtaskDueDate('');
+    setSubtaskStartTime('11:00');
+    setSubtaskEndTime('12:00');
   };
 
   const toggleTask = (taskId: string) => {
@@ -270,6 +288,11 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, currentUser }: any)
                           </div>
                           <span className={`flex-1 text-base md:text-lg font-bold tracking-tight ${task.completed ? 'line-through opacity-40' : 'text-stone-700'}`}>
                             {task.text}
+                            {task.dueDate && (
+                              <span className="block text-[10px] font-black uppercase tracking-widest text-stone-400 mt-1">
+                                Due {new Date(task.dueDate).toLocaleDateString()}{task.startTime ? ` ${task.startTime}` : ''}{task.endTime ? ` - ${task.endTime}` : ''}
+                              </span>
+                            )}
                           </span>
                           {isOwner && (
                             <button 
@@ -293,22 +316,85 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, currentUser }: any)
                 {/* Input Area: Sticky-like but at the bottom of the column */}
                 {isOwner && (
                   <div className="p-8 md:p-10 border-t border-stone-100 bg-white/90 backdrop-blur-md sticky bottom-0 z-10">
-                    <div className="flex flex-col sm:flex-row gap-4">
-                      <input 
-                        type={goal.financialTarget ? "number" : "text"} 
-                        placeholder={goal.financialTarget ? "Amount in Dollars ($)..." : "What is the next step?..."} 
-                        className="flex-1 bg-stone-50 border-2 border-stone-200 rounded-[1.5rem] px-8 py-5 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all text-base font-bold shadow-sm"
-                        value={inputValue}
-                        onChange={e => setInputValue(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAction()}
-                      />
-                      <button 
-                        onClick={handleAction}
-                        className="bg-stone-900 text-white px-10 py-5 rounded-[1.5rem] font-black hover:bg-stone-800 transition-all transform active:scale-95 shadow-xl flex items-center justify-center uppercase tracking-[0.2em] text-[11px] shrink-0"
-                      >
-                        {goal.financialTarget ? 'Add Cash' : 'Add Item'}
-                      </button>
-                    </div>
+                    {goal.financialTarget ? (
+                      <div className="flex flex-col sm:flex-row gap-4">
+                        <input 
+                          type="number"
+                          placeholder="Amount in Dollars ($)..."
+                          className="flex-1 bg-stone-50 border-2 border-stone-200 rounded-[1.5rem] px-8 py-5 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all text-base font-bold shadow-sm"
+                          value={inputValue}
+                          onChange={e => setInputValue(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleAction()}
+                        />
+                        <button 
+                          onClick={handleAction}
+                          className="bg-stone-900 text-white px-10 py-5 rounded-[1.5rem] font-black hover:bg-stone-800 transition-all transform active:scale-95 shadow-xl flex items-center justify-center uppercase tracking-[0.2em] text-[11px] shrink-0"
+                        >
+                          Add Cash
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-end">
+                          <div className="md:col-span-8 space-y-2">
+                            <label className="block text-[10px] font-black text-stone-400 uppercase tracking-[0.2em]">Subtask</label>
+                            <input 
+                              type="text"
+                              placeholder="What is the next step?..."
+                              className="w-full h-[60px] bg-stone-50 border-2 border-stone-200 rounded-[1.25rem] px-6 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all text-base font-bold shadow-sm"
+                              value={inputValue}
+                              onChange={e => setInputValue(e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && handleAction()}
+                            />
+                          </div>
+
+                          <div className="md:col-span-4 space-y-2">
+                            <label className="block text-[10px] font-black text-stone-400 uppercase tracking-[0.2em]">Date</label>
+                            <input
+                              type="date"
+                              className="w-full h-[60px] bg-stone-50 border-2 border-stone-200 rounded-[1.25rem] px-4 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all text-sm font-bold shadow-sm"
+                              value={subtaskDueDate}
+                              onChange={e => setSubtaskDueDate(e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-end">
+                          <div className="space-y-2">
+                            <label className="block text-[10px] font-black text-stone-400 uppercase tracking-[0.2em]">Start Time</label>
+                            <input
+                              type="time"
+                              className="w-full h-[60px] bg-stone-50 border-2 border-stone-200 rounded-[1.25rem] px-4 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all text-sm font-bold shadow-sm"
+                              value={subtaskStartTime}
+                              onChange={e => setSubtaskStartTime(e.target.value)}
+                              disabled={!subtaskDueDate}
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="block text-[10px] font-black text-stone-400 uppercase tracking-[0.2em]">End Time</label>
+                            <input
+                              type="time"
+                              className="w-full h-[60px] bg-stone-50 border-2 border-stone-200 rounded-[1.25rem] px-4 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all text-sm font-bold shadow-sm"
+                              value={subtaskEndTime}
+                              onChange={e => setSubtaskEndTime(e.target.value)}
+                              disabled={!subtaskDueDate}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="pt-1">
+                          <button 
+                            onClick={handleAction}
+                            className="w-full sm:w-auto min-w-[220px] h-[60px] bg-stone-900 text-white rounded-[1.25rem] px-8 font-black hover:bg-stone-800 transition-all transform active:scale-95 shadow-xl flex items-center justify-center uppercase tracking-[0.2em] text-[10px]"
+                          >
+                            Add Item
+                          </button>
+                        </div>
+
+                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-[0.15em]">Select a date to enable start and end time</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -339,7 +425,7 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, currentUser }: any)
                     </div>
                     <div className="space-y-2 text-right">
                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Due Date</p>
-                      <p className="text-sm font-black text-stone-900 uppercase tracking-tight">{new Date(goal.targetDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                      <p className="text-sm font-black text-stone-900 uppercase tracking-tight">{new Date(goal.targetDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}{goal.targetTime ? ` ${goal.targetTime}` : ''}</p>
                     </div>
                   </div>
                 </div>
@@ -377,6 +463,7 @@ const GoalModal = ({ type, onClose, onSave, currentUser }: any) => {
     description: '',
     category: 'Financial',
     targetDate: new Date().toISOString().split('T')[0],
+    targetTime: '09:00',
     financialTarget: undefined,
     currentAmount: 0,
     progressPercentage: 0,
@@ -389,7 +476,7 @@ const GoalModal = ({ type, onClose, onSave, currentUser }: any) => {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-xl p-10 md:p-16 my-auto animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-3xl p-10 md:p-16 my-auto animate-in fade-in zoom-in-95 duration-200">
         <h3 className="text-4xl font-black mb-12 text-stone-900 tracking-tight leading-none">Create {type === 'shared' ? 'Shared' : 'Personal'} Goal</h3>
         <div className="space-y-10">
           <div className="space-y-3">
@@ -432,7 +519,7 @@ const GoalModal = ({ type, onClose, onSave, currentUser }: any) => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
             <div className="space-y-3">
               <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.3em]">Category</label>
               <select className="w-full border-2 border-stone-100 rounded-[1.75rem] px-7 py-5 bg-stone-50 font-black outline-none appearance-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as any})}>
@@ -442,6 +529,10 @@ const GoalModal = ({ type, onClose, onSave, currentUser }: any) => {
             <div className="space-y-3">
               <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.3em]">Deadline</label>
               <input type="date" className="w-full border-2 border-stone-100 rounded-[1.75rem] px-7 py-5 bg-stone-50 font-black outline-none" value={formData.targetDate} onChange={e => setFormData({...formData, targetDate: e.target.value})} />
+            </div>
+            <div className="space-y-3">
+              <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.3em]">Time</label>
+              <input type="time" className="w-full border-2 border-stone-100 rounded-[1.75rem] px-7 py-5 bg-stone-50 font-black outline-none" value={formData.targetTime || '09:00'} onChange={e => setFormData({...formData, targetTime: e.target.value})} />
             </div>
           </div>
         </div>

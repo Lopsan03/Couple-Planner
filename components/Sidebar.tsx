@@ -8,9 +8,11 @@ interface SidebarProps {
   currentUser: User;
   partner: User;
   switchUser: () => void;
+  showSwitchUser?: boolean;
+  onProfileClick?: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab, currentUser, partner, switchUser }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab, currentUser, partner, switchUser, showSwitchUser = true, onProfileClick }) => {
   const menuItems = [
     { id: 'calendar', label: 'Shared Calendar', icon: '📅' },
     { id: 'activities', label: 'Activity Bank', icon: '🎲' },
@@ -29,16 +31,20 @@ const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab, currentUse
         </div>
 
         <div className="space-y-4">
-          <div className="flex -space-x-3 overflow-hidden">
-            <img className="inline-block h-10 w-10 rounded-full ring-2 ring-white" src={currentUser.avatar} alt={currentUser.name} />
-            <img className="inline-block h-10 w-10 rounded-full ring-2 ring-white" src={partner.avatar} alt={partner.name} />
-            <button 
-              onClick={switchUser}
-              className="flex items-center justify-center h-10 w-10 rounded-full bg-stone-100 text-stone-500 ring-2 ring-white hover:bg-stone-200 transition-colors"
-              title="Switch user"
-            >
-              🔄
+          <div className="flex -space-x-3 items-center py-1 overflow-visible">
+            <button onClick={onProfileClick} className="rounded-full" title="Open profile">
+              <img className="inline-block h-10 w-10 rounded-full ring-2 ring-white object-cover" src={currentUser.avatar} alt={currentUser.name} />
             </button>
+            <img className="inline-block h-10 w-10 rounded-full ring-2 ring-white object-cover" src={partner.avatar} alt={partner.name} />
+            {showSwitchUser && (
+              <button 
+                onClick={switchUser}
+                className="flex items-center justify-center h-10 w-10 rounded-full bg-stone-100 text-stone-500 ring-2 ring-white hover:bg-stone-200 transition-colors"
+                title="Switch user"
+              >
+                🔄
+              </button>
+            )}
           </div>
           <div>
             <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Logged in as</p>

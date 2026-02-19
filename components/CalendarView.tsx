@@ -1,19 +1,205 @@
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { PlannerState, CalendarEvent, Activity } from '../types';
-import { COLORS, USERS } from '../constants';
+import { COLORS } from '../constants';
 
 interface CalendarViewProps {
   state: PlannerState;
   actions: any;
+  memberProfiles?: Array<{
+    user_id: string;
+    member_slot: number;
+    username: string;
+    birthday: string | null;
+  }>;
 }
 
-const CalendarView: React.FC<CalendarViewProps> = ({ state, actions }) => {
+type CalendarDisplayEvent = CalendarEvent & {
+  isGoalDerived?: boolean;
+  isBirthdayDerived?: boolean;
+  recurrenceSourceId?: string;
+};
+
+const CalendarView: React.FC<CalendarViewProps> = ({ state, actions, memberProfiles = [] }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'month' | 'day'>('month');
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+
+  const getOwnerName = (targetUserId?: string) => {
+    if (!targetUserId) return '';
+    if (targetUserId === state.currentUser.id) return state.currentUser.name;
+    if (targetUserId === state.partner.id) return state.partner.name;
+    return '';
+  };
+
+  const getOneHourLater = (time: string) => {
+    const [hours, minutes] = time.split(':').map(Number);
+    const nextHour = (hours + 1) % 24;
+    return `${String(nextHour).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  };
+
+  const toLocalDateKey = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const toEventDateKey = (rawDate: string) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+      return rawDate;
+    }
+
+    const parsed = new Date(rawDate);
+    if (Number.isNaN(parsed.getTime())) {
+      return rawDate;
+    }
+
+    return toLocalDateKey(parsed);
+  };
+
+  const goalEvents = useMemo<CalendarDisplayEvent[]>(() => {
+    const allGoals = [...state.sharedGoals, ...state.individualGoals];
+    const derived: CalendarDisplayEvent[] = [];
+
+    allGoals.forEach(goal => {
+      if (goal.targetDate) {
+        const startTime = goal.targetTime || '09:00';
+        derived.push({
+          id: `goal-due-${goal.id}`,
+          date: goal.targetDate,
+          startTime,
+          endTime: getOneHourLater(startTime),
+          customName: `${goal.financialTarget ? '💰' : '🎯'} Goal Due: ${goal.title}`,
+          category: 'Free',
+          estimatedCost: 0,
+          duration: '1 hour',
+          notes: goal.description || 'Goal deadline',
+          createdBy: 'Goals System',
+          lastModifiedBy: 'Goals System',
+          scope: goal.userId ? 'Individual' : 'Shared',
+          targetUserId: goal.userId,
+          isGoalDerived: true,
+        });
+      }
+
+      (goal.tasks || []).forEach(task => {
+        if (!task.dueDate) return;
+        const startTime = task.startTime || task.dueTime || '11:00';
+        const endTime = task.endTime || getOneHourLater(startTime);
+        derived.push({
+          id: `goal-task-due-${goal.id}-${task.id}`,
+          date: task.dueDate,
+          startTime,
+          endTime,
+          customName: `✅ Subtask Due: ${task.text}`,
+          category: 'Free',
+          estimatedCost: 0,
+          duration: '1 hour',
+          notes: `From goal: ${goal.title}`,
+          createdBy: 'Goals System',
+          lastModifiedBy: 'Goals System',
+          scope: goal.userId ? 'Individual' : 'Shared',
+          targetUserId: goal.userId,
+          isGoalDerived: true,
+        });
+      });
+    });
+
+    return derived;
+  }, [state.sharedGoals, state.individualGoals]);
+
+  const birthdayEvents = useMemo<CalendarDisplayEvent[]>(() => {
+    const year = currentDate.getFullYear();
+
+    return memberProfiles
+      .filter(member => !!member.birthday && /^\d{4}-\d{2}-\d{2}$/.test(member.birthday))
+      .map(member => {
+        const birthday = member.birthday as string;
+        const birthdayParts = birthday.split('-');
+        const month = birthdayParts[1];
+        const day = birthdayParts[2];
+
+        return {
+          id: `birthday-${member.user_id}-${year}`,
+          date: `${year}-${month}-${day}`,
+          startTime: '00:00',
+          endTime: '23:59',
+          customName: `🎂 ${member.username}'s Birthday`,
+          category: 'Free',
+          estimatedCost: 0,
+          duration: 'All day',
+          notes: `${member.username}'s birthday`,
+          createdBy: 'Profile System',
+          lastModifiedBy: 'Profile System',
+          scope: 'Shared',
+          isBirthdayDerived: true,
+        };
+      });
+  }, [currentDate, memberProfiles]);
+
+  const allCalendarEvents = useMemo<CalendarDisplayEvent[]>(
+    () => [...state.events, ...goalEvents, ...birthdayEvents],
+    [state.events, goalEvents, birthdayEvents]
+  );
+
+  const getExpandedEventsForDay = (date: Date) => {
+    const dayKey = toLocalDateKey(date);
+    const dayDate = new Date(`${dayKey}T00:00:00`);
+
+    return allCalendarEvents.flatMap((event) => {
+      if (event.isGoalDerived || event.isBirthdayDerived) {
+        return toEventDateKey(event.date) === dayKey ? [event] : [];
+      }
+
+      if (event.recurrence === 'Weekly') {
+        const startKey = toEventDateKey(event.date);
+        const startDate = new Date(`${startKey}T00:00:00`);
+        if (dayDate < startDate) return [];
+        if (dayDate.getDay() !== startDate.getDay()) return [];
+
+        return [{
+          ...event,
+          id: `${event.id}-${dayKey}`,
+          date: dayKey,
+          recurrenceSourceId: event.id,
+        }];
+      }
+
+      if (event.recurrence === 'Monthly') {
+        const startKey = toEventDateKey(event.date);
+        const startDate = new Date(`${startKey}T00:00:00`);
+        if (dayDate < startDate) return [];
+        if (dayDate.getDate() !== startDate.getDate()) return [];
+
+        return [{
+          ...event,
+          id: `${event.id}-${dayKey}`,
+          date: dayKey,
+          recurrenceSourceId: event.id,
+        }];
+      }
+
+      if (event.recurrence === 'Yearly') {
+        const startKey = toEventDateKey(event.date);
+        const startDate = new Date(`${startKey}T00:00:00`);
+        if (dayDate < startDate) return [];
+        if (dayDate.getDate() !== startDate.getDate()) return [];
+        if (dayDate.getMonth() !== startDate.getMonth()) return [];
+
+        return [{
+          ...event,
+          id: `${event.id}-${dayKey}`,
+          date: dayKey,
+          recurrenceSourceId: event.id,
+        }];
+      }
+
+      return toEventDateKey(event.date) === dayKey ? [event] : [];
+    });
+  };
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -27,10 +213,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ state, actions }) => {
   };
 
   const getEventsForDay = (date: Date) => {
-    return state.events.filter(e => {
-      const eventDate = new Date(e.date);
-      return eventDate.toDateString() === date.toDateString();
-    });
+    return getExpandedEventsForDay(date);
   };
 
   const handleDayClick = (date: Date) => {
@@ -38,9 +221,13 @@ const CalendarView: React.FC<CalendarViewProps> = ({ state, actions }) => {
     setView('day');
   };
 
-  const handleEventClick = (e: React.MouseEvent, event: CalendarEvent) => {
+  const handleEventClick = (e: React.MouseEvent, event: CalendarDisplayEvent) => {
     e.stopPropagation();
-    setEditingEvent(event);
+    if (event.isGoalDerived || event.isBirthdayDerived) return;
+    const baseEvent = event.recurrenceSourceId
+      ? state.events.find(base => base.id === event.recurrenceSourceId) || null
+      : event;
+    setEditingEvent(baseEvent);
     setSelectedDay(new Date(event.date));
     setIsModalOpen(true);
   };
@@ -51,6 +238,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ state, actions }) => {
         date: selectedDay?.toISOString() || '',
         startTime: '09:00',
         endTime: '10:00',
+        recurrence: 'None',
         category: 'Free',
         estimatedCost: 0,
         duration: '1 hour',
@@ -63,6 +251,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ state, actions }) => {
     const handleSave = () => {
       const finalEvent = {
         ...formData,
+        recurrence: formData.recurrence || 'None',
         id: editingEvent?.id || Math.random().toString(36).substr(2, 9),
         createdBy: editingEvent?.createdBy || state.currentUser.name,
         lastModifiedBy: state.currentUser.name
@@ -126,8 +315,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ state, actions }) => {
                     value={formData.targetUserId} onChange={e => setFormData({...formData, targetUserId: e.target.value})}
                   >
                     <option value="">Choose User</option>
-                    <option value={USERS.DAVID.id}>David</option>
-                    <option value={USERS.CARLA.id}>Carla</option>
+                    <option value={state.currentUser.id}>{state.currentUser.name}</option>
+                    <option value={state.partner.id}>{state.partner.name}</option>
                   </select>
                 </div>
               )}
@@ -150,6 +339,20 @@ const CalendarView: React.FC<CalendarViewProps> = ({ state, actions }) => {
                 <input type="time" className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-white"
                   value={formData.endTime} onChange={(e) => setFormData({...formData, endTime: e.target.value})} />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">Recurrence</label>
+              <select
+                className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-white"
+                value={formData.recurrence || 'None'}
+                onChange={(e) => setFormData({ ...formData, recurrence: e.target.value as 'None' | 'Weekly' | 'Monthly' | 'Yearly' })}
+              >
+                <option value="None">Does not repeat</option>
+                <option value="Weekly">Repeats weekly (same weekday)</option>
+                <option value="Monthly">Repeats monthly (same day)</option>
+                <option value="Yearly">Repeats yearly (same date)</option>
+              </select>
             </div>
 
             <div className="flex gap-4 pt-6">
@@ -181,7 +384,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ state, actions }) => {
                     <span className={`inline-flex items-center justify-center w-7 h-7 text-xs font-bold rounded-full mb-2 ${date.toDateString() === new Date().toDateString() ? 'bg-emerald-600 text-white' : 'text-stone-400'}`}>{date.getDate()}</span>
                     <div className="space-y-1">
                       {dayEvents.map(event => {
-                        const ownerName = event.scope === 'Individual' ? (event.targetUserId === USERS.DAVID.id ? "David" : event.targetUserId === USERS.CARLA.id ? "Carla" : "") : "";
+                        const ownerName = event.scope === 'Individual' ? getOwnerName(event.targetUserId) : '';
                         return (
                           <div key={event.id} onClick={(e) => handleEventClick(e, event)} className={`text-[9px] px-2 py-1 rounded-lg border truncate font-bold leading-tight ${COLORS[event.category === 'Free' ? 'Free' : (event.estimatedCost > 50 ? 'High' : 'Low')]}`}>
                             {event.startTime} {event.customName} {ownerName && `(${ownerName})`}
@@ -209,7 +412,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ state, actions }) => {
         <div className="p-6 border-b border-stone-100 flex items-center justify-between sticky top-0 bg-white z-10">
           <div>
             <h3 className="text-xl font-bold text-stone-900">{selectedDay.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
-            <p className="text-sm text-stone-500 font-medium">{dayEvents.length} activities scheduled</p>
+            <p className="text-sm text-stone-500 font-medium">{dayEvents.length} items scheduled</p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => { setEditingEvent(null); setIsModalOpen(true); }} className="px-5 py-2.5 bg-stone-900 text-white rounded-xl text-sm font-bold shadow-lg">Schedule New</button>
@@ -230,7 +433,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ state, actions }) => {
               const top = (sH * 96) + (sM / 60 * 96);
               const height = ((eH * 96) + (eM / 60 * 96)) - top;
               const costType = event.category === 'Free' ? 'Free' : (event.estimatedCost > 50 ? 'High' : 'Low');
-              const ownerName = event.scope === 'Individual' ? (event.targetUserId === USERS.DAVID.id ? "David's" : event.targetUserId === USERS.CARLA.id ? "Carla's" : "") : "Shared";
+              const dynamicOwnerName = getOwnerName(event.targetUserId);
+              const ownerName = event.scope === 'Individual' ? (dynamicOwnerName ? `${dynamicOwnerName}'s` : 'Individual') : 'Shared';
 
               return (
                 <div key={event.id} onClick={(e) => handleEventClick(e as any, event)} 

@@ -1,22 +1,97 @@
 
 import React, { useState } from 'react';
 import { PlannerState } from '../types';
-import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
 interface BudgetDashboardProps {
   state: PlannerState;
   actions: any;
+  isDarkMode: boolean;
 }
 
-const BudgetDashboard: React.FC<BudgetDashboardProps> = ({ state, actions }) => {
+const BudgetDashboard: React.FC<BudgetDashboardProps> = ({ state, actions, isDarkMode }) => {
   const [viewDate, setViewDate] = useState(new Date());
+  const remainingStrokeColor = isDarkMode ? '#7dd3fc' : '#0ea5e9';
 
   const currentMonth = viewDate.getMonth();
   const currentYear = viewDate.getFullYear();
 
-  const monthlyEvents = state.events.filter(e => {
-    const d = new Date(e.date);
-    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+  const parseEventDate = (rawDate: string) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+      return new Date(`${rawDate}T00:00:00`);
+    }
+
+    return new Date(rawDate);
+  };
+
+  const toDateKey = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const startOfMonth = new Date(currentYear, currentMonth, 1);
+  const endOfMonth = new Date(currentYear, currentMonth + 1, 0);
+
+  const monthlyEvents = state.events.flatMap(e => {
+    const baseDate = parseEventDate(e.date);
+    if (Number.isNaN(baseDate.getTime())) return [];
+
+    if (e.recurrence === 'None' || !e.recurrence) {
+      return baseDate.getMonth() === currentMonth && baseDate.getFullYear() === currentYear ? [e] : [];
+    }
+
+    if (e.recurrence === 'Weekly') {
+      const events: typeof state.events = [];
+      const weekday = baseDate.getDay();
+      const cursor = new Date(Math.max(baseDate.getTime(), startOfMonth.getTime()));
+
+      while (cursor.getDay() !== weekday) {
+        cursor.setDate(cursor.getDate() + 1);
+      }
+
+      while (cursor <= endOfMonth) {
+        events.push({
+          ...e,
+          id: `${e.id}-${toDateKey(cursor)}`,
+          date: toDateKey(cursor),
+        });
+        cursor.setDate(cursor.getDate() + 7);
+      }
+
+      return events;
+    }
+
+    if (e.recurrence === 'Monthly') {
+      const monthsDiff = (currentYear - baseDate.getFullYear()) * 12 + (currentMonth - baseDate.getMonth());
+      if (monthsDiff < 0) return [];
+
+      const candidate = new Date(currentYear, currentMonth, baseDate.getDate());
+      if (candidate.getMonth() !== currentMonth) return [];
+
+      return [{
+        ...e,
+        id: `${e.id}-${toDateKey(candidate)}`,
+        date: toDateKey(candidate),
+      }];
+    }
+
+    if (e.recurrence === 'Yearly') {
+      if (currentYear < baseDate.getFullYear()) return [];
+      if (currentMonth !== baseDate.getMonth()) return [];
+
+      const candidate = new Date(currentYear, currentMonth, baseDate.getDate());
+      if (candidate.getMonth() !== currentMonth) return [];
+
+      return [{
+        ...e,
+        id: `${e.id}-${toDateKey(candidate)}`,
+        date: toDateKey(candidate),
+      }];
+    }
+
+    return [];
   });
 
   const totalActual = monthlyEvents.reduce((acc, e) => acc + (e.actualCost || e.estimatedCost || 0), 0);
@@ -37,7 +112,7 @@ const BudgetDashboard: React.FC<BudgetDashboardProps> = ({ state, actions }) => 
     { name: 'Remaining', value: remaining },
     ...Object.entries(categorySpending).map(([name, value]) => ({ name, value }))
   ];
-  
+
   const PIE_COLORS = ['#ecfdf5', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#f43f5e', '#ec4899', '#06b6d4'];
 
   // Correct Week Mapping: W1-W5
@@ -97,7 +172,20 @@ const BudgetDashboard: React.FC<BudgetDashboardProps> = ({ state, actions }) => 
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#a8a29e', fontSize: 12}} />
                 <YAxis axisLine={false} tickLine={false} tick={{fill: '#a8a29e', fontSize: 12}} />
-                <Tooltip cursor={{fill: '#f5f5f4'}} contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
+                <Tooltip
+                  cursor={{ fill: isDarkMode ? 'rgba(148, 163, 184, 0.16)' : '#f5f5f4' }}
+                  contentStyle={{
+                    borderRadius: '16px',
+                    border: isDarkMode ? '1px solid #334155' : 'none',
+                    backgroundColor: isDarkMode ? '#0f172a' : '#ffffff',
+                    color: isDarkMode ? '#e2e8f0' : '#1c1917',
+                    boxShadow: isDarkMode
+                      ? '0 10px 24px -10px rgb(2 6 23 / 0.85)'
+                      : '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                  }}
+                  labelStyle={{ color: isDarkMode ? '#cbd5e1' : '#57534e' }}
+                  itemStyle={{ color: isDarkMode ? '#f8fafc' : '#1c1917' }}
+                />
                 <Bar dataKey="spent" fill="#10b981" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -119,13 +207,45 @@ const BudgetDashboard: React.FC<BudgetDashboardProps> = ({ state, actions }) => 
                   dataKey="value"
                 >
                   {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} strokeWidth={entry.name === 'Remaining' ? 2 : 0} stroke="#10b981" />
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={
+                        entry.name === 'Remaining'
+                          ? (isDarkMode ? '#111827' : '#ffffff')
+                          : PIE_COLORS[index % PIE_COLORS.length]
+                      }
+                      strokeWidth={entry.name === 'Remaining' ? 2 : 0}
+                      stroke={entry.name === 'Remaining' ? remainingStrokeColor : '#10b981'}
+                    />
                   ))}
                 </Pie>
-                <Tooltip />
-                <Legend verticalAlign="bottom" align="center" iconType="circle" />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: '16px',
+                    border: isDarkMode ? '1px solid #334155' : 'none',
+                    backgroundColor: isDarkMode ? '#0f172a' : '#ffffff',
+                    color: isDarkMode ? '#e2e8f0' : '#1c1917',
+                    boxShadow: isDarkMode
+                      ? '0 10px 24px -10px rgb(2 6 23 / 0.85)'
+                      : '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                  }}
+                  labelStyle={{ color: isDarkMode ? '#cbd5e1' : '#57534e' }}
+                  itemStyle={{ color: isDarkMode ? '#f8fafc' : '#1c1917' }}
+                  formatter={(value: number, name: string) => [`$${Number(value).toFixed(2)}`, name]}
+                />
               </PieChart>
             </ResponsiveContainer>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs font-medium">
+            {pieData.map((entry, index) => {
+              const dotColor = entry.name === 'Remaining' ? remainingStrokeColor : PIE_COLORS[index % PIE_COLORS.length];
+              return (
+                <div key={`legend-${entry.name}-${index}`} className="inline-flex items-center gap-2 text-stone-600">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: dotColor }} />
+                  <span>{entry.name}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

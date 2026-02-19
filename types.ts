@@ -30,6 +30,7 @@ export interface CalendarEvent {
   date: string; // ISO string (YYYY-MM-DD)
   startTime: string; // HH:mm format
   endTime: string; // HH:mm format
+  recurrence?: 'None' | 'Weekly' | 'Monthly' | 'Yearly';
   activityId?: string;
   customName?: string;
   category: ActivityCost;
@@ -47,6 +48,10 @@ export interface GoalTask {
   id: string;
   text: string;
   completed: boolean;
+  dueDate?: string;
+  dueTime?: string;
+  startTime?: string;
+  endTime?: string;
 }
 
 export interface GoalContribution {
@@ -64,6 +69,7 @@ export interface Goal {
   description: string;
   category: Category;
   targetDate: string;
+  targetTime?: string;
   financialTarget?: number;
   currentAmount?: number; // Calculated from contributions
   progressPercentage: number; // Calculated from tasks or money
