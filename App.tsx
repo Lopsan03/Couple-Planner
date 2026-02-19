@@ -1013,7 +1013,7 @@ const App: React.FC = () => {
             type="text"
             value={usernameInput}
             onChange={e => setUsernameInput(e.target.value)}
-            placeholder="e.g. davidandcarla"
+            placeholder="username"
             className="w-full border-2 border-stone-200 bg-stone-50 rounded-2xl px-5 py-4 font-bold outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500"
           />
           {formError && <p className="text-rose-600 text-sm mt-3 font-medium">{formError}</p>}
@@ -1192,9 +1192,9 @@ const App: React.FC = () => {
 
             <div className="space-y-5">
               {isWaitingForPartner && (
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-                  <p className="text-[11px] font-black text-emerald-700 uppercase tracking-[0.2em]">Invite your partner</p>
-                  <p className="text-sm text-emerald-800 mt-1">Share this code. It disappears once your partner links.</p>
+                <div className={`rounded-2xl border p-4 ${isDarkMode ? 'border-emerald-500/30 bg-emerald-900/20' : 'border-emerald-200 bg-emerald-50/70'}`}>
+                  <p className={`text-[11px] font-black uppercase tracking-[0.2em] ${isDarkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>Invite your partner</p>
+                  <p className={`text-sm mt-1 ${isDarkMode ? 'text-emerald-100/90' : 'text-emerald-800'}`}>Share this code. It disappears once your partner links.</p>
                   <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
                     <div className="flex-1 rounded-xl bg-stone-900 text-white px-4 py-3 text-center font-black tracking-[0.2em] text-base">
                       {profileInviteLoading ? 'Generating...' : (profileInviteCode || 'Unavailable')}
@@ -1205,7 +1205,7 @@ const App: React.FC = () => {
                         navigator.clipboard.writeText(profileInviteCode);
                       }}
                       disabled={!profileInviteCode}
-                      className="px-4 py-3 rounded-xl border border-emerald-300 text-emerald-700 font-bold bg-white disabled:opacity-60"
+                      className={`px-4 py-3 rounded-xl border font-bold disabled:opacity-60 ${isDarkMode ? 'border-emerald-500/40 text-emerald-300 bg-slate-900/70' : 'border-emerald-300 text-emerald-700 bg-white'}`}
                     >
                       Copy
                     </button>
