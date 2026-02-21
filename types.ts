@@ -19,7 +19,7 @@ export interface Activity {
   duration: string;
   energyLevel: EnergyLevel;
   indoorOutdoor: 'Indoor' | 'Outdoor';
-  type: Category;
+  type: string;
   notes: string;
   scope: ActivityScope;
   targetUserId?: string;
@@ -93,6 +93,7 @@ export interface PlannerState {
   currentUser: User;
   partner: User;
   activities: Activity[];
+  customActivityTypes?: string[];
   events: CalendarEvent[];
   sharedGoals: Goal[];
   individualGoals: Goal[];

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { PlannerState, Activity, ActivityScope } from '../types';
-import { CATEGORY_ICONS, USERS } from '../constants';
+import { CATEGORY_ICONS, DEFAULT_ACTIVITY_TYPES, USERS } from '../constants';
 
 interface ActivityDBProps {
   state: PlannerState;
@@ -11,6 +11,10 @@ interface ActivityDBProps {
 const ActivityDB: React.FC<ActivityDBProps> = ({ state, actions }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const availableTypes = [
+    ...DEFAULT_ACTIVITY_TYPES,
+    ...(state.customActivityTypes || []),
+  ];
 
   const filtered = state.activities.filter(a => 
     a.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -82,14 +86,16 @@ const ActivityDB: React.FC<ActivityDBProps> = ({ state, actions }) => {
       {isModalOpen && (
         <ActivityModal 
           onClose={() => setIsModalOpen(false)} 
-          onSave={actions.addActivity} 
+          onSave={actions.addActivity}
+          onAddCustomType={actions.addCustomActivityType}
+          availableTypes={availableTypes}
         />
       )}
     </div>
   );
 };
 
-const ActivityModal = ({ onClose, onSave }: any) => {
+const ActivityModal = ({ onClose, onSave, onAddCustomType, availableTypes }: any) => {
   const [formData, setFormData] = useState<Partial<Activity>>({
     name: '',
     category: 'Free',
@@ -101,6 +107,21 @@ const ActivityModal = ({ onClose, onSave }: any) => {
     notes: '',
     scope: 'Shared'
   });
+  const [estimatedCostInput, setEstimatedCostInput] = useState('');
+  const [customTypeInput, setCustomTypeInput] = useState('');
+
+  const handleAddCustomType = () => {
+    const normalized = customTypeInput.trim();
+    if (!normalized) return;
+
+    const exists = availableTypes.some((type: string) => type.toLowerCase() === normalized.toLowerCase());
+    if (!exists) {
+      onAddCustomType(normalized);
+    }
+
+    setFormData({ ...formData, type: normalized });
+    setCustomTypeInput('');
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -149,7 +170,17 @@ const ActivityModal = ({ onClose, onSave }: any) => {
             <select 
               className="w-full border border-stone-200 rounded-xl px-4 py-3 bg-white"
               value={formData.category}
-              onChange={e => setFormData({...formData, category: e.target.value as any})}
+              onChange={e => {
+                const nextCategory = e.target.value as any;
+                setFormData({
+                  ...formData,
+                  category: nextCategory,
+                  estimatedCost: nextCategory === 'Free' ? 0 : (Number(estimatedCostInput) || 0),
+                });
+                if (nextCategory === 'Free') {
+                  setEstimatedCostInput('');
+                }
+              }}
             >
               <option value="Free">Free</option>
               <option value="Paid">Paid</option>
@@ -161,8 +192,15 @@ const ActivityModal = ({ onClose, onSave }: any) => {
             <input 
               type="number"
               className="w-full border border-stone-200 rounded-xl px-4 py-3 bg-white"
-              value={formData.estimatedCost}
-              onChange={e => setFormData({...formData, estimatedCost: Number(e.target.value)})}
+              value={formData.category === 'Free' ? '' : estimatedCostInput}
+              onChange={e => {
+                const nextValue = e.target.value;
+                setEstimatedCostInput(nextValue);
+                setFormData({
+                  ...formData,
+                  estimatedCost: nextValue === '' ? 0 : Number(nextValue),
+                });
+              }}
               disabled={formData.category === 'Free'}
             />
           </div>
@@ -175,10 +213,26 @@ const ActivityModal = ({ onClose, onSave }: any) => {
                 value={formData.type}
                 onChange={e => setFormData({...formData, type: e.target.value as any})}
               >
-                {['Adventure', 'Creative', 'Relaxing', 'Growth', 'Relationship', 'Health'].map(t => (
+                {availableTypes.map((t: string) => (
                   <option key={t} value={t}>{t}</option>
                 ))}
               </select>
+              <div className="mt-2 flex gap-2">
+                <input
+                  type="text"
+                  className="w-full border border-stone-200 rounded-xl px-3 py-2 bg-white text-sm"
+                  value={customTypeInput}
+                  onChange={e => setCustomTypeInput(e.target.value)}
+                  placeholder="Add custom type"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCustomType}
+                  className="px-3 py-2 rounded-xl bg-stone-900 text-white text-sm font-semibold whitespace-nowrap"
+                >
+                  Add
+                </button>
+              </div>
             </div>
 
             <div>
@@ -207,7 +261,13 @@ const ActivityModal = ({ onClose, onSave }: any) => {
 
         <div className="flex gap-4 mt-8">
           <button 
-            onClick={() => { onSave({...formData, id: Date.now().toString()}); onClose(); }}
+            onClick={() => {
+              const finalEstimatedCost = formData.category === 'Free'
+                ? 0
+                : (estimatedCostInput.trim() === '' ? 0 : Number(estimatedCostInput));
+              onSave({ ...formData, estimatedCost: finalEstimatedCost, id: Date.now().toString() });
+              onClose();
+            }}
             className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-bold shadow-lg hover:bg-emerald-700 transition-colors"
           >
             Save Activity

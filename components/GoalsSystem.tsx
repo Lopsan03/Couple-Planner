@@ -1,7 +1,22 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { PlannerState, Goal, GoalTask, GoalContribution } from '../types';
 import { CATEGORY_ICONS } from '../constants';
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(value) ? value : 0);
+
+const formatCurrencyCompact = (value: number) =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(Number.isFinite(value) ? value : 0);
 
 interface GoalsSystemProps {
   state: PlannerState;
@@ -78,6 +93,7 @@ const GoalsSystem: React.FC<GoalsSystemProps> = ({ state, actions }) => {
           isOwner={activeTab === 'shared' || selectedGoal.userId === state.currentUser.id}
           onClose={() => setSelectedGoalId(null)}
           onUpdate={activeTab === 'shared' ? actions.updateSharedGoal : actions.updateIndividualGoal}
+          onDelete={activeTab === 'shared' ? actions.deleteSharedGoal : actions.deleteIndividualGoal}
           currentUser={state.currentUser}
         />
       )}
@@ -132,7 +148,7 @@ const GoalCard = ({ goal, ownerName, isOwner, onClick }: any) => {
         </div>
         <p className="text-[11px] text-stone-500 font-medium">
           {goal.financialTarget 
-            ? `$${goal.currentAmount || 0} of $${goal.financialTarget}` 
+            ? `${formatCurrency(goal.currentAmount || 0)} of ${formatCurrency(goal.financialTarget || 0)}` 
             : `${(goal.tasks || []).filter((t:any) => t.completed).length} of ${(goal.tasks || []).length} tasks complete`}
         </p>
       </div>
@@ -140,18 +156,45 @@ const GoalCard = ({ goal, ownerName, isOwner, onClick }: any) => {
   );
 };
 
-const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, currentUser }: any) => {
+const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUser }: any) => {
   const [inputValue, setInputValue] = useState('');
   const [subtaskDueDate, setSubtaskDueDate] = useState('');
   const [subtaskStartTime, setSubtaskStartTime] = useState('11:00');
   const [subtaskEndTime, setSubtaskEndTime] = useState('12:00');
+  const [isEditingGoal, setIsEditingGoal] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    title: goal.title,
+    description: goal.description || '',
+    category: goal.category,
+    targetDate: goal.targetDate,
+    targetTime: goal.targetTime || '09:00',
+    financialTarget: goal.financialTarget !== undefined ? String(goal.financialTarget) : '',
+  });
+
+  useEffect(() => {
+    setIsEditingGoal(false);
+    setEditFormData({
+      title: goal.title,
+      description: goal.description || '',
+      category: goal.category,
+      targetDate: goal.targetDate,
+      targetTime: goal.targetTime || '09:00',
+      financialTarget: goal.financialTarget !== undefined ? String(goal.financialTarget) : '',
+    });
+  }, [goal.id, goal.title, goal.description, goal.category, goal.targetDate, goal.targetTime, goal.financialTarget]);
 
   const calculateProgress = (updatedGoal: Goal) => {
     let progress = 0;
     if (updatedGoal.financialTarget) {
       const total = (updatedGoal.contributions || []).reduce((acc, c) => acc + c.amount, 0);
       updatedGoal.currentAmount = total;
-      progress = Math.min(100, Math.round((total / updatedGoal.financialTarget) * 100));
+      const target = updatedGoal.financialTarget;
+      if (target > 0) {
+        progress = Math.min(100, Number(((total / target) * 100).toFixed(2)));
+      } else {
+        progress = 0;
+      }
     } else if (updatedGoal.tasks && updatedGoal.tasks.length > 0) {
       const completed = updatedGoal.tasks.filter(t => t.completed).length;
       progress = Math.round((completed / updatedGoal.tasks.length) * 100);
@@ -211,6 +254,42 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, currentUser }: any)
     onUpdate(calculateProgress({ ...goal, tasks: updatedTasks }));
   };
 
+  const saveGoalDetails = () => {
+    if (!isOwner) return;
+    if (!editFormData.title.trim()) return;
+
+    let nextFinancialTarget = goal.financialTarget;
+    if (goal.financialTarget !== undefined) {
+      const parsedTarget = Number(editFormData.financialTarget);
+      if (Number.isFinite(parsedTarget) && parsedTarget > 0) {
+        nextFinancialTarget = parsedTarget;
+      }
+    }
+
+    const updatedGoal: Goal = {
+      ...goal,
+      title: editFormData.title.trim(),
+      description: editFormData.description.trim(),
+      category: editFormData.category as Goal['category'],
+      targetDate: editFormData.targetDate,
+      targetTime: editFormData.targetTime,
+      financialTarget: nextFinancialTarget,
+    };
+
+    onUpdate(calculateProgress(updatedGoal));
+    setIsEditingGoal(false);
+  };
+
+  const deleteGoal = () => {
+    if (!isOwner) return;
+    setIsDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteGoal = () => {
+    onDelete(goal.id);
+    onClose();
+  };
+
   const mainIcon = goal.financialTarget ? '💰' : '🎯';
 
   return (
@@ -257,7 +336,7 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, currentUser }: any)
                       [...(goal.contributions || [])].reverse().map((c: GoalContribution) => (
                         <div key={c.id} className="flex justify-between items-center p-6 bg-white rounded-[2rem] border border-stone-100 shadow-sm transition-all hover:border-emerald-200 hover:shadow-md animate-in slide-in-from-bottom-2">
                           <div>
-                            <p className="text-2xl md:text-3xl font-black text-emerald-700 tracking-tight">+ ${c.amount}</p>
+                            <p className="text-xl sm:text-2xl md:text-3xl font-black text-emerald-700 tracking-tight break-all">+ {formatCurrency(c.amount)}</p>
                             <p className="text-[11px] text-stone-400 uppercase font-black tracking-widest mt-1.5">By {c.userName} • {new Date(c.date).toLocaleDateString()}</p>
                           </div>
                           <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 font-black text-2xl">✓</div>
@@ -401,6 +480,82 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, currentUser }: any)
 
               {/* RIGHT SIDE: Stats / Info Column */}
               <div className="lg:col-span-5 space-y-10">
+                {isOwner && (
+                  <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-stone-200 shadow-sm space-y-4">
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        onClick={() => setIsEditingGoal(prev => !prev)}
+                        className="px-5 py-2.5 rounded-xl border border-stone-200 text-stone-700 font-bold hover:bg-stone-50"
+                      >
+                        {isEditingGoal ? 'Cancel Edit' : 'Edit Goal'}
+                      </button>
+                      <button
+                        onClick={deleteGoal}
+                        className="px-5 py-2.5 rounded-xl border border-rose-200 text-rose-700 font-bold hover:bg-rose-50"
+                      >
+                        Delete Goal
+                      </button>
+                    </div>
+
+                    {isEditingGoal && (
+                      <div className="space-y-3 pt-2">
+                        <input
+                          className="w-full border-2 border-stone-200 bg-stone-50 rounded-xl px-4 py-3 font-bold outline-none"
+                          value={editFormData.title}
+                          onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+                          placeholder="Goal title"
+                        />
+                        <textarea
+                          className="w-full border-2 border-stone-200 bg-stone-50 rounded-xl px-4 py-3 font-medium outline-none"
+                          value={editFormData.description}
+                          onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                          placeholder="Description"
+                          rows={3}
+                        />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <select
+                            className="w-full border-2 border-stone-200 bg-stone-50 rounded-xl px-4 py-3 font-bold outline-none"
+                            value={editFormData.category}
+                            onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value as Goal['category'] })}
+                          >
+                            {['Financial', 'Health', 'Travel', 'Relationship', 'Career'].map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                          <input
+                            type="date"
+                            className="w-full border-2 border-stone-200 bg-stone-50 rounded-xl px-4 py-3 font-bold outline-none"
+                            value={editFormData.targetDate}
+                            onChange={(e) => setEditFormData({ ...editFormData, targetDate: e.target.value })}
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <input
+                            type="time"
+                            className="w-full border-2 border-stone-200 bg-stone-50 rounded-xl px-4 py-3 font-bold outline-none"
+                            value={editFormData.targetTime}
+                            onChange={(e) => setEditFormData({ ...editFormData, targetTime: e.target.value })}
+                          />
+                          {goal.financialTarget !== undefined && (
+                            <input
+                              type="number"
+                              min="1"
+                              className="w-full border-2 border-stone-200 bg-stone-50 rounded-xl px-4 py-3 font-bold outline-none"
+                              value={editFormData.financialTarget}
+                              onChange={(e) => setEditFormData({ ...editFormData, financialTarget: e.target.value })}
+                              placeholder="Savings target"
+                            />
+                          )}
+                        </div>
+                        <button
+                          onClick={saveGoalDetails}
+                          className="w-full py-3 bg-stone-900 text-white rounded-xl font-bold hover:bg-stone-800"
+                        >
+                          Save Changes
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="bg-white p-10 md:p-14 rounded-[3rem] md:rounded-[4rem] border-2 border-stone-100 shadow-sm space-y-10">
                   <div>
                     <div className="flex justify-between items-end mb-6">
@@ -437,12 +592,12 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, currentUser }: any)
                   <div className="relative z-10 space-y-6">
                     <h4 className="text-xs font-black text-emerald-400 uppercase tracking-[0.5em] mb-4">Milestone Overview</h4>
                     <div className="space-y-3">
-                      <p className="text-7xl md:text-8xl font-black tracking-tighter tabular-nums leading-none">
-                        {goal.financialTarget ? `$${goal.currentAmount || 0}` : `${(goal.tasks || []).filter((t:any) => t.completed).length}`}
+                      <p className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tighter tabular-nums leading-tight break-all max-w-full">
+                        {goal.financialTarget ? formatCurrencyCompact(goal.currentAmount || 0) : `${(goal.tasks || []).filter((t:any) => t.completed).length}`}
                       </p>
-                      <p className="text-stone-400 font-bold text-lg md:text-xl tracking-tight leading-snug">
+                      <p className="text-stone-400 font-bold text-base md:text-xl tracking-tight leading-snug break-words">
                         {goal.financialTarget 
-                          ? `contributed toward your total target of $${goal.financialTarget}` 
+                          ? `contributed toward your total target of ${formatCurrency(goal.financialTarget || 0)}` 
                           : `milestones checked off out of ${(goal.tasks || []).length} planned actions`}
                       </p>
                     </div>
@@ -452,6 +607,29 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, currentUser }: any)
             </div>
           </div>
         </div>
+
+        {isDeleteConfirmOpen && (
+          <div className="absolute inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-5">
+            <div className="w-full max-w-md bg-white border border-stone-200 rounded-3xl shadow-2xl p-7">
+              <h4 className="text-xl font-black text-stone-900">Delete this goal?</h4>
+              <p className="text-sm text-stone-600 mt-2">This action cannot be undone. All related progress and entries for this goal will be removed.</p>
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setIsDeleteConfirmOpen(false)}
+                  className="flex-1 py-3 rounded-xl border border-stone-200 text-stone-600 font-bold hover:bg-stone-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteGoal}
+                  className="flex-1 py-3 rounded-xl bg-rose-600 text-white font-bold hover:bg-rose-700"
+                >
+                  Delete Goal
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -471,6 +649,7 @@ const GoalModal = ({ type, onClose, onSave, currentUser }: any) => {
     tasks: [],
     contributions: []
   });
+  const [financialTargetInput, setFinancialTargetInput] = useState('');
 
   const isMoney = formData.financialTarget !== undefined;
 
@@ -493,7 +672,10 @@ const GoalModal = ({ type, onClose, onSave, currentUser }: any) => {
             <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.3em]">How will you measure it?</label>
             <div className="grid grid-cols-2 gap-5">
               <button 
-                onClick={() => setFormData({...formData, financialTarget: 1000})}
+                onClick={() => {
+                  setFormData({ ...formData, financialTarget: 0 });
+                  setFinancialTargetInput('');
+                }}
                 className={`py-6 rounded-[1.75rem] border-2 font-black text-sm transition-all flex items-center justify-center gap-4 ${isMoney ? 'bg-stone-900 border-stone-900 text-white shadow-2xl scale-[1.03]' : 'bg-white border-stone-100 text-stone-400 hover:border-stone-200'}`}
               >
                 <span className="text-2xl">💰</span> MONEY
@@ -513,8 +695,15 @@ const GoalModal = ({ type, onClose, onSave, currentUser }: any) => {
               <input 
                 type="number"
                 className="w-full border-2 border-stone-100 rounded-[1.75rem] px-8 py-6 bg-stone-50 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 font-black text-2xl transition-all"
-                value={formData.financialTarget}
-                onChange={e => setFormData({...formData, financialTarget: Number(e.target.value)})}
+                value={financialTargetInput}
+                onChange={e => {
+                  const nextValue = e.target.value;
+                  setFinancialTargetInput(nextValue);
+                  setFormData({
+                    ...formData,
+                    financialTarget: nextValue === '' ? 0 : Number(nextValue),
+                  });
+                }}
               />
             </div>
           )}
@@ -541,8 +730,12 @@ const GoalModal = ({ type, onClose, onSave, currentUser }: any) => {
           <button 
             onClick={() => { 
               if(!formData.title) return alert('Please enter a goal name');
+              if (isMoney && (financialTargetInput.trim() === '' || Number(financialTargetInput) <= 0)) {
+                return alert('Please enter a valid savings target amount');
+              }
               onSave({ 
                 ...formData, 
+                financialTarget: isMoney ? Number(financialTargetInput) : undefined,
                 id: Math.random().toString(36).substr(2, 9), 
                 userId: type === 'individual' ? currentUser.id : undefined,
                 status: 'Not Started',

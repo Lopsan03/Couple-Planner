@@ -30,7 +30,7 @@ const InsightsPanel: React.FC<InsightsPanelProps> = ({ state }) => {
     // 2. Activity Balance
     const paidRatio = monthlyEvents.filter(e => e.category === 'Paid').length / (monthlyEvents.length || 1);
     if (paidRatio > 0.6) {
-      list.push("💡 Suggestion: Try adding some 'Free' activities to balance costs.");
+      list.push('⚖️ Activity Mix: Most plans are paid this month.');
     }
 
     // 3. Goal Deadlines
@@ -67,9 +67,6 @@ const InsightsPanel: React.FC<InsightsPanelProps> = ({ state }) => {
 
   return (
     <div className="flex items-center gap-3 px-3 py-1 overflow-hidden min-w-[300px]">
-      <div className="flex items-center justify-center w-8 h-8 bg-stone-100 rounded-lg text-lg flex-shrink-0 animate-pulse">
-        🤖
-      </div>
       <div className="flex-1 relative h-6">
         {insights.map((insight, idx) => (
           <p 

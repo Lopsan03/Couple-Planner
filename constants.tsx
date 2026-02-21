@@ -19,6 +19,8 @@ export const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   Growth: '🌱',
 };
 
+export const DEFAULT_ACTIVITY_TYPES = ['Adventure', 'Creative', 'Relaxing', 'Growth', 'Relationship', 'Health'];
+
 export const USERS = {
   DAVID: { id: 'user-1', name: 'David', avatar: 'https://picsum.photos/seed/david/100/100' },
   CARLA: { id: 'user-2', name: 'Carla', avatar: 'https://picsum.photos/seed/carla/100/100' },

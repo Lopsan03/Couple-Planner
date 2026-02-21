@@ -6,7 +6,6 @@ import CalendarView from './components/CalendarView';
 import BudgetDashboard from './components/BudgetDashboard';
 import ActivityDB from './components/ActivityDB';
 import GoalsSystem from './components/GoalsSystem';
-import InsightsPanel from './components/InsightsPanel';
 import supabase from './supabaseClient';
 
 const STORAGE_KEY = 'couple_planner_data';
@@ -64,6 +63,7 @@ const buildInitialPlannerState = (currentUser: User, partner: User): PlannerStat
   currentUser,
   partner,
   activities: [],
+  customActivityTypes: [],
   events: [],
   sharedGoals: [],
   individualGoals: [],
@@ -145,10 +145,10 @@ const App: React.FC = () => {
     localStorage.setItem(THEME_KEY, isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  const themeToggleButton = (
+  const renderThemeToggleButton = () => (
     <button
       onClick={() => setIsDarkMode(prev => !prev)}
-      className="fixed top-4 right-4 z-[120] h-10 w-10 rounded-full border border-stone-200 bg-white/90 backdrop-blur text-lg shadow-sm hover:scale-105 transition-transform"
+      className="h-9 w-9 rounded-full border border-stone-200 bg-stone-50 text-sm shadow-sm hover:bg-stone-100 transition-colors flex items-center justify-center"
       title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
     >
       {isDarkMode ? '☀️' : '🌙'}
@@ -368,6 +368,7 @@ const App: React.FC = () => {
         ...remoteState,
         currentUser,
         partner,
+        customActivityTypes: remoteState.customActivityTypes ?? [],
       };
     } else {
       nextState = buildInitialPlannerState(currentUser, partner);
@@ -871,6 +872,20 @@ const App: React.FC = () => {
       updateState('activities', state.activities.filter(a => a.id !== id));
       addLog('Deleted an activity');
     },
+    addCustomActivityType: (type: string) => {
+      const normalized = type.trim();
+      if (!normalized) return;
+
+      const existingTypes = state.customActivityTypes ?? [];
+      const alreadyExists = existingTypes.some(
+        existingType => existingType.toLowerCase() === normalized.toLowerCase()
+      );
+
+      if (alreadyExists) return;
+
+      updateState('customActivityTypes', [...existingTypes, normalized]);
+      addLog(`Added custom activity type: ${normalized}`);
+    },
     addEvent: (event: CalendarEvent) => {
       updateState('events', [...state.events, event]);
       addLog(`Added calendar event: ${event.customName || 'Activity'}`);
@@ -891,6 +906,11 @@ const App: React.FC = () => {
       updateState('sharedGoals', state.sharedGoals.map(g => g.id === goal.id ? goal : g));
       addLog(`Updated shared goal: ${goal.title}`);
     },
+    deleteSharedGoal: (id: string) => {
+      const goal = state.sharedGoals.find(g => g.id === id);
+      updateState('sharedGoals', state.sharedGoals.filter(g => g.id !== id));
+      addLog(`Deleted shared goal: ${goal?.title || 'Goal'}`);
+    },
     addIndividualGoal: (goal: Goal) => {
       updateState('individualGoals', [...state.individualGoals, goal]);
       addLog(`Created personal goal: ${goal.title}`);
@@ -898,6 +918,11 @@ const App: React.FC = () => {
     updateIndividualGoal: (goal: Goal) => {
       updateState('individualGoals', state.individualGoals.map(g => g.id === goal.id ? goal : g));
       addLog(`Updated personal goal: ${goal.title}`);
+    },
+    deleteIndividualGoal: (id: string) => {
+      const goal = state.individualGoals.find(g => g.id === id);
+      updateState('individualGoals', state.individualGoals.filter(g => g.id !== id));
+      addLog(`Deleted personal goal: ${goal?.title || 'Goal'}`);
     },
     updateBudgetLimit: (limit: number) => {
       updateState('budget', { monthlyLimit: limit });
@@ -914,8 +939,8 @@ const App: React.FC = () => {
 
   if (authLoading || profileLoading || plannerLoading) {
     return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center p-8">
-        {themeToggleButton}
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center p-8 relative">
+        <div className="absolute top-4 right-4">{renderThemeToggleButton()}</div>
         <div className="bg-white border border-stone-200 rounded-3xl px-8 py-6 shadow-sm text-center">
           <p className="text-stone-900 font-bold">Loading Planner...</p>
           <p className="text-sm text-stone-500 mt-1">Syncing your workspace securely.</p>
@@ -927,16 +952,18 @@ const App: React.FC = () => {
   if (!session) {
     return (
       <div className={`min-h-screen text-stone-900 ${isDarkMode ? 'bg-slate-950' : 'bg-gradient-to-b from-white to-stone-100'}`}>
-        {themeToggleButton}
         <div className="max-w-6xl mx-auto px-6 md:px-10 py-10 md:py-16">
           <header className="flex items-center justify-between mb-16">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white font-black text-lg">C</div>
               <span className="font-black text-xl tracking-tight">PlannerPro</span>
             </div>
-            <div className="hidden md:flex gap-3">
+            <div className="flex items-center gap-3">
+              {renderThemeToggleButton()}
+              <div className="hidden md:flex gap-3">
               <button onClick={() => beginGoogleAuth('login')} className="px-5 py-2.5 border border-stone-200 rounded-xl font-bold text-stone-700 hover:bg-stone-50 transition-colors">Login</button>
               <button onClick={() => beginGoogleAuth('register')} className="px-5 py-2.5 bg-stone-900 text-white rounded-xl font-bold hover:bg-stone-800 transition-colors">Register</button>
+              </div>
             </div>
           </header>
 
@@ -979,8 +1006,8 @@ const App: React.FC = () => {
   if (!profile) {
     if (authIntent === 'login') {
       return (
-        <div className="min-h-screen bg-stone-50 flex items-center justify-center p-6">
-          {themeToggleButton}
+        <div className="min-h-screen bg-stone-50 flex items-center justify-center p-6 relative">
+          <div className="absolute top-4 right-4">{renderThemeToggleButton()}</div>
           <div className="w-full max-w-md bg-white border border-stone-200 rounded-3xl p-8 shadow-sm text-center">
             <h2 className="text-2xl font-black text-stone-900 mb-3">No account found</h2>
             <p className="text-stone-600 mb-6">This Google account is not registered yet. Continue with registration to create your planner profile.</p>
@@ -1002,8 +1029,8 @@ const App: React.FC = () => {
     }
 
     return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center p-6">
-        {themeToggleButton}
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center p-6 relative">
+        <div className="absolute top-4 right-4">{renderThemeToggleButton()}</div>
         <div className="w-full max-w-lg bg-white border border-stone-200 rounded-3xl p-8 shadow-sm">
           <h2 className="text-3xl font-black text-stone-900 mb-2">Create your profile</h2>
           <p className="text-stone-600 mb-2">You are signed in with Google, but your Planner profile is not created yet.</p>
@@ -1030,11 +1057,15 @@ const App: React.FC = () => {
 
   if (!profile.planner_id) {
     return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center p-6">
-        {themeToggleButton}
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center p-6 relative">
+        <div className="absolute top-4 right-4">{renderThemeToggleButton()}</div>
         <div className="w-full max-w-2xl bg-white border border-stone-200 rounded-3xl p-8 md:p-10 shadow-sm">
-          <h2 className="text-3xl font-black text-stone-900 mb-2">Link your planner</h2>
-          <p className="text-stone-600 mb-6">Were you invited, or are you starting a new planner?</p>
+          {linkMode === 'choose' && (
+            <>
+              <h2 className="text-3xl font-black text-stone-900 mb-2">Link your planner</h2>
+              <p className="text-stone-600 mb-6">Were you invited, or are you starting a new planner?</p>
+            </>
+          )}
 
           {linkMode === 'choose' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1088,15 +1119,15 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen overflow-hidden bg-stone-50 flex-col lg:flex-row">
-      {themeToggleButton}
       <header className="lg:hidden bg-white border-b border-stone-200 p-4 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-black text-sm">C</div>
           <span className="font-black text-stone-900 tracking-tight">PlannerPro</span>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setIsProfileModalOpen(true)} className="px-3 py-1.5 text-xs rounded-full border border-stone-200 bg-stone-50 font-bold">Profile</button>
-          <button onClick={signOut} className="px-3 py-1.5 text-xs rounded-full border border-stone-200 bg-stone-50 font-bold">Logout</button>
+          {renderThemeToggleButton()}
+          <button onClick={() => setIsProfileModalOpen(true)} className="px-2.5 py-1.5 text-[11px] rounded-full border border-stone-200 bg-stone-50 font-bold">Profile</button>
+          <button onClick={signOut} className="px-2.5 py-1.5 text-[11px] rounded-full border border-stone-200 bg-stone-50 font-bold">Logout</button>
           <button
             onClick={() => setIsProfileModalOpen(true)}
             className="rounded-full"
@@ -1119,13 +1150,13 @@ const App: React.FC = () => {
 
       <main className="flex-1 overflow-y-auto p-4 md:p-8 no-scrollbar pb-24 lg:pb-8">
         <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
-          <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <header className="hidden md:flex md:items-center justify-between gap-4">
             <div className="hidden md:block">
               <h1 className="text-3xl font-black text-stone-900 capitalize tracking-tight">{currentTab}</h1>
               <p className="text-stone-500 font-medium">Welcome back, {state.currentUser.name}</p>
             </div>
             <div className="flex items-center gap-4 bg-white p-2 rounded-2xl shadow-sm border border-stone-200">
-              <InsightsPanel state={state} />
+              {renderThemeToggleButton()}
               <button onClick={() => setIsProfileModalOpen(true)} className="px-4 py-2 text-xs rounded-xl border border-stone-200 text-stone-600 font-bold hover:bg-stone-50">Profile</button>
               <button onClick={signOut} className="px-4 py-2 text-xs rounded-xl border border-stone-200 text-stone-600 font-bold hover:bg-stone-50">Logout</button>
             </div>
