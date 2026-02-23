@@ -1596,18 +1596,21 @@ const App: React.FC = () => {
             </div>
 
             {currentTutorialStep.targetTab && (
-              <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="mt-4 rounded-2xl border border-stone-200 bg-white shadow-sm p-3 space-y-3">
                 <button
                   onClick={() => setCurrentTab(currentTutorialStep.targetTab)}
-                  className="px-4 py-2.5 rounded-xl bg-stone-900 text-white font-bold text-sm hover:bg-stone-800"
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-stone-900 text-white font-bold text-sm hover:bg-stone-800"
                 >
                   {currentTutorialStep.actionLabel}
                 </button>
-                <span className={`text-sm font-bold ${currentTutorialStep.completed ? 'text-emerald-700' : 'text-amber-700'}`}>
-                  {currentTutorialStep.completed
-                    ? (isSpanish ? '✅ Tarea completada' : '✅ Task completed')
-                    : (currentTutorialStep.completionHint || '')}
-                </span>
+
+                <div className={`rounded-xl px-3 py-2 ${currentTutorialStep.completed ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'}`}>
+                  <span className={`text-sm font-bold ${currentTutorialStep.completed ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {currentTutorialStep.completed
+                      ? (isSpanish ? '✅ Tarea completada' : '✅ Task completed')
+                      : (currentTutorialStep.completionHint || '')}
+                  </span>
+                </div>
               </div>
             )}
 
