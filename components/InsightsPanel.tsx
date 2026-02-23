@@ -18,7 +18,11 @@ const InsightsPanel: React.FC<InsightsPanelProps> = ({ state }) => {
     });
 
     const totalActual = monthlyEvents.reduce((acc, e) => acc + (e.actualCost || e.estimatedCost || 0), 0);
-    const spendingRatio = totalActual / state.budget.monthlyLimit;
+    const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+    const currentLimit = state.budget.monthlyLimits?.[monthKey]
+      ?? state.budget.monthlyDefaultLimit
+      ?? state.budget.monthlyLimit;
+    const spendingRatio = totalActual / (currentLimit || 1);
 
     // 1. Budget Warnings
     if (spendingRatio > 0.9) {

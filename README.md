@@ -2,6 +2,10 @@
 
 Realtime couple planner built with React + Vite + Supabase (Auth, Postgres, Realtime).
 
+## Product Documentation
+
+- Full app features and functionality: [APP_FEATURES.md](APP_FEATURES.md)
+
 ## Local Development
 
 Prerequisites:

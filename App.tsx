@@ -11,6 +11,8 @@ import supabase from './supabaseClient';
 const STORAGE_KEY = 'couple_planner_data';
 const AUTH_INTENT_KEY = 'planner_auth_intent';
 const THEME_KEY = 'planner_theme';
+const LANGUAGE_KEY = 'planner_language';
+const TUTORIAL_KEY_PREFIX = 'planner_tutorial_hidden';
 const DEBUG_SYNC = (import.meta.env.VITE_DEBUG_SYNC ?? 'false') === 'true';
 
 const FALLBACK_AVATAR = 'https://picsum.photos/seed/default-avatar/100/100';
@@ -67,7 +69,7 @@ const buildInitialPlannerState = (currentUser: User, partner: User): PlannerStat
   events: [],
   sharedGoals: [],
   individualGoals: [],
-  budget: { monthlyLimit: 2000 },
+  budget: { monthlyLimit: 2000, monthlyDefaultLimit: 2000, monthlyLimits: {} },
   logs: [],
 });
 
@@ -101,6 +103,9 @@ const App: React.FC = () => {
   const [profileSaveLoading, setProfileSaveLoading] = useState(false);
   const [profileInviteCode, setProfileInviteCode] = useState<string | null>(null);
   const [profileInviteLoading, setProfileInviteLoading] = useState(false);
+  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+  const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
+  const [dontShowTutorialAgain, setDontShowTutorialAgain] = useState(false);
 
   const [state, setState] = useState<PlannerState>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -122,6 +127,11 @@ const App: React.FC = () => {
   });
 
   const [currentTab, setCurrentTab] = useState('calendar');
+  const [language, setLanguage] = useState<'en' | 'es'>(() => {
+    const storedLanguage = localStorage.getItem(LANGUAGE_KEY);
+    return storedLanguage === 'es' ? 'es' : 'en';
+  });
+  const isSpanish = language === 'es';
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     const storedTheme = localStorage.getItem(THEME_KEY);
     if (storedTheme === 'dark') return true;
@@ -134,6 +144,7 @@ const App: React.FC = () => {
   const saveTimeoutId = useRef<number | null>(null);
   const lastSyncedStateSignature = useRef('');
   const activeRealtimeChannel = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const tutorialInitializedForUser = useRef<string | null>(null);
 
   const debug = (...args: any[]) => {
     if (!DEBUG_SYNC) return;
@@ -145,6 +156,10 @@ const App: React.FC = () => {
     localStorage.setItem(THEME_KEY, isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
+  useEffect(() => {
+    localStorage.setItem(LANGUAGE_KEY, language);
+  }, [language]);
+
   const renderThemeToggleButton = () => (
     <button
       onClick={() => setIsDarkMode(prev => !prev)}
@@ -154,6 +169,18 @@ const App: React.FC = () => {
       {isDarkMode ? '☀️' : '🌙'}
     </button>
   );
+
+  const renderLanguageToggleButton = () => (
+    <button
+      onClick={() => setLanguage(prev => (prev === 'en' ? 'es' : 'en'))}
+      className="h-9 px-3 rounded-full border border-stone-200 bg-stone-50 text-xs font-black shadow-sm hover:bg-stone-100 transition-colors flex items-center justify-center"
+      title={isSpanish ? 'Cambiar a inglés' : 'Switch to Spanish'}
+    >
+      {isSpanish ? 'ES' : 'EN'}
+    </button>
+  );
+
+  const getTutorialStorageKey = (userId: string) => `${TUTORIAL_KEY_PREFIX}_${userId}`;
 
   const beginGoogleAuth = async (intent: AuthIntent) => {
     setFormError(null);
@@ -364,11 +391,20 @@ const App: React.FC = () => {
 
     if (plannerStateRow?.data) {
       const remoteState = plannerStateRow.data as PlannerState;
+      const normalizedDefaultLimit = remoteState.budget?.monthlyDefaultLimit
+        ?? remoteState.budget?.monthlyLimit
+        ?? 2000;
+      const normalizedMonthlyLimits = remoteState.budget?.monthlyLimits ?? {};
       nextState = {
         ...remoteState,
         currentUser,
         partner,
         customActivityTypes: remoteState.customActivityTypes ?? [],
+        budget: {
+          monthlyLimit: remoteState.budget?.monthlyLimit ?? normalizedDefaultLimit,
+          monthlyDefaultLimit: normalizedDefaultLimit,
+          monthlyLimits: normalizedMonthlyLimits,
+        },
       };
     } else {
       nextState = buildInitialPlannerState(currentUser, partner);
@@ -925,25 +961,202 @@ const App: React.FC = () => {
       addLog(`Deleted personal goal: ${goal?.title || 'Goal'}`);
     },
     updateBudgetLimit: (limit: number) => {
-      updateState('budget', { monthlyLimit: limit });
-      addLog(`Updated monthly budget limit to $${limit}`);
+      const normalizedLimit = Number(limit);
+      if (!Number.isFinite(normalizedLimit) || normalizedLimit <= 0) return;
+
+      const now = new Date();
+      const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const nextMonthlyLimits = {
+        ...(state.budget.monthlyLimits || {}),
+        [currentMonthKey]: normalizedLimit,
+      };
+
+      updateState('budget', {
+        monthlyLimit: normalizedLimit,
+        monthlyDefaultLimit: normalizedLimit,
+        monthlyLimits: nextMonthlyLimits,
+      });
+      addLog(`Updated budget limit to $${normalizedLimit} for ${currentMonthKey} and future months`);
     }
   };
 
+  const hasCreatedFirstGoal = (state.sharedGoals.length + state.individualGoals.length) > 0;
+  const hasCreatedFirstActivity = state.activities.length > 0;
+  const hasScheduledFirstEvent = state.events.length > 0;
+  const hasEditedMonthlyBudget = Object.keys(state.budget.monthlyLimits || {}).length > 0;
+
+  const tutorialSteps = isSpanish
+    ? [
+        {
+          title: 'Tutorial Interactivo',
+          description: 'Vamos a completar 4 tareas reales: crear una meta, crear una actividad, agendar en calendario y revisar presupuesto.',
+          useCase: 'Aprenderás usando la app directamente, no solo leyendo instrucciones.',
+          requiresCompletion: false,
+        },
+        {
+          title: 'Tarea 1: Crear tu primera meta',
+          description: 'Ve a Metas y pulsa “Crear Nueva Meta...”. Completa: Nombre, tipo (Dinero o Tareas), fecha y hora.',
+          useCase: 'Si eliges Dinero, agrega meta total; si eliges Tareas, podrás añadir subtareas después.',
+          targetTab: 'goals',
+          actionLabel: 'Ir a Metas',
+          requiresCompletion: true,
+          completed: hasCreatedFirstGoal,
+          completionHint: 'Completa esta tarea creando al menos 1 meta (compartida o individual).'
+        },
+        {
+          title: 'Tarea 2: Crear tu primera actividad',
+          description: 'Ve al Banco de Actividades y pulsa “Agregar Actividad”. Ahí puedes crear actividades Gratis o Pagadas.',
+          useCase: 'Gratis: sin costo. Pagada: agrega costo estimado para controlar tu presupuesto.',
+          targetTab: 'activities',
+          actionLabel: 'Ir al Banco de Actividades',
+          requiresCompletion: true,
+          completed: hasCreatedFirstActivity,
+          completionHint: 'Completa esta tarea creando al menos 1 actividad.'
+        },
+        {
+          title: 'Tarea 3: Programar en calendario',
+          description: 'Ve a Calendario, elige un día y crea un evento. Puedes usar una actividad del banco como preset editable.',
+          useCase: 'Rellena: fecha, horario, nombre, tipo de costo (gratis/pagado) y recurrencia si aplica.',
+          targetTab: 'calendar',
+          actionLabel: 'Ir al Calendario',
+          requiresCompletion: true,
+          completed: hasScheduledFirstEvent,
+          completionHint: 'Completa esta tarea creando al menos 1 evento en el calendario.'
+        },
+        {
+          title: 'Tarea 4: Revisar y editar presupuesto mensual',
+          description: 'Abre Presupuesto y edita el límite del mes actual con el botón “Editar”.',
+          useCase: 'La barra muestra gasto por semana; el pie chart muestra desglose por categorías y restante.',
+          targetTab: 'budget',
+          actionLabel: 'Ir a Presupuesto',
+          requiresCompletion: true,
+          completed: hasEditedMonthlyBudget,
+          completionHint: 'Completa esta tarea editando el límite mensual actual.'
+        },
+        {
+          title: '¡Listo! Ya sabes lo esencial',
+          description: 'Ya puedes seguir con Metas, seguimiento de actividad reciente, cambio de idioma y tema.',
+          useCase: 'Usa este flujo cada mes: actividad → calendario → presupuesto.',
+          requiresCompletion: false,
+        },
+      ]
+    : [
+        {
+          title: 'Interactive Tutorial',
+          description: 'We will complete 4 real tasks: create a goal, create an activity, schedule it, and review budget.',
+          useCase: 'You learn by using the app directly, not just reading.',
+          requiresCompletion: false,
+        },
+        {
+          title: 'Task 1: Create your first goal',
+          description: 'Go to Goals and click “Set a New Goal...”. Fill: title, type (Money or Tasks), date, and time.',
+          useCase: 'Money goals need a target total; task goals let you add subtasks afterward.',
+          targetTab: 'goals',
+          actionLabel: 'Go to Goals',
+          requiresCompletion: true,
+          completed: hasCreatedFirstGoal,
+          completionHint: 'Complete this task by creating at least 1 goal (shared or individual).'
+        },
+        {
+          title: 'Task 2: Create your first activity',
+          description: 'Go to Activity Bank and click “Add New Activity”. You can create Free or Paid activities.',
+          useCase: 'Free means no cost. Paid lets you set estimated cost for budget tracking.',
+          targetTab: 'activities',
+          actionLabel: 'Go to Activity Bank',
+          requiresCompletion: true,
+          completed: hasCreatedFirstActivity,
+          completionHint: 'Complete this task by creating at least 1 activity.'
+        },
+        {
+          title: 'Task 3: Schedule in calendar',
+          description: 'Go to Calendar, click a day, then create an event. You can load an activity-bank preset and edit it.',
+          useCase: 'Fill date, time, event name, cost type (free/paid), and recurrence when needed.',
+          targetTab: 'calendar',
+          actionLabel: 'Go to Calendar',
+          requiresCompletion: true,
+          completed: hasScheduledFirstEvent,
+          completionHint: 'Complete this task by creating at least 1 calendar event.'
+        },
+        {
+          title: 'Task 4: Review and edit monthly budget',
+          description: 'Open Budget and edit the current month limit using the “Edit” action.',
+          useCase: 'Bar chart shows weekly spend; pie chart shows category split and remaining budget.',
+          targetTab: 'budget',
+          actionLabel: 'Go to Budget',
+          requiresCompletion: true,
+          completed: hasEditedMonthlyBudget,
+          completionHint: 'Complete this task by editing the current monthly limit.'
+        },
+        {
+          title: 'Done! You know the core flow',
+          description: 'You can now continue with Goals, Recent Activity tracking, language, and theme.',
+          useCase: 'Use this monthly rhythm: activity → calendar → budget.',
+          requiresCompletion: false,
+        },
+      ];
+
+  const currentTutorialStep = tutorialSteps[tutorialStepIndex] as any;
+  const isLastTutorialStep = tutorialStepIndex === tutorialSteps.length - 1;
+  const isCurrentStepComplete = !currentTutorialStep.requiresCompletion || currentTutorialStep.completed;
+
+  const persistTutorialPreference = (hideTutorial: boolean) => {
+    if (!session?.user.id) return;
+    const key = getTutorialStorageKey(session.user.id);
+    if (hideTutorial) {
+      localStorage.setItem(key, 'true');
+    } else {
+      localStorage.removeItem(key);
+    }
+  };
+
+  const closeTutorial = () => {
+    persistTutorialPreference(dontShowTutorialAgain);
+    setIsTutorialOpen(false);
+  };
+
+  useEffect(() => {
+    if (!session?.user.id || !profile?.planner_id || plannerLoading) {
+      if (!session?.user.id) {
+        tutorialInitializedForUser.current = null;
+      }
+      return;
+    }
+
+    if (tutorialInitializedForUser.current === session.user.id) return;
+
+    const hidden = localStorage.getItem(getTutorialStorageKey(session.user.id)) === 'true';
+    setDontShowTutorialAgain(hidden);
+    setTutorialStepIndex(0);
+    setIsTutorialOpen(!hidden);
+    tutorialInitializedForUser.current = session.user.id;
+  }, [session?.user.id, profile?.planner_id, plannerLoading]);
+
   const menuItems = [
-    { id: 'calendar', label: 'Calendar', icon: '📅' },
-    { id: 'activities', label: 'Bank', icon: '🎲' },
-    { id: 'budget', label: 'Budget', icon: '📊' },
-    { id: 'goals', label: 'Goals', icon: '🎯' },
+    { id: 'calendar', label: isSpanish ? 'Calendario' : 'Calendar', icon: '📅' },
+    { id: 'activities', label: isSpanish ? 'Banco' : 'Bank', icon: '🎲' },
+    { id: 'budget', label: isSpanish ? 'Presupuesto' : 'Budget', icon: '📊' },
+    { id: 'goals', label: isSpanish ? 'Metas' : 'Goals', icon: '🎯' },
   ];
+
+  const localizeLogMessage = (message: string) => {
+    if (!isSpanish) return message;
+
+    return message
+      .replace(/^Updated\b/, 'Actualizado')
+      .replace(/^Removed\b/, 'Eliminado')
+      .replace(/^Added\b/, 'Agregado')
+      .replace(/^Deleted\b/, 'Eliminado')
+      .replace(/^Created\b/, 'Creado');
+  };
 
   if (authLoading || profileLoading || plannerLoading) {
     return (
       <div className="min-h-screen bg-stone-50 flex items-center justify-center p-8 relative">
         <div className="absolute top-4 right-4">{renderThemeToggleButton()}</div>
+        <div className="absolute top-4 right-16">{renderLanguageToggleButton()}</div>
         <div className="bg-white border border-stone-200 rounded-3xl px-8 py-6 shadow-sm text-center">
-          <p className="text-stone-900 font-bold">Loading Planner...</p>
-          <p className="text-sm text-stone-500 mt-1">Syncing your workspace securely.</p>
+          <p className="text-stone-900 font-bold">{isSpanish ? 'Cargando Planner...' : 'Loading Planner...'}</p>
+          <p className="text-sm text-stone-500 mt-1">{isSpanish ? 'Sincronizando tu espacio de forma segura.' : 'Syncing your workspace securely.'}</p>
         </div>
       </div>
     );
@@ -960,9 +1173,10 @@ const App: React.FC = () => {
             </div>
             <div className="flex items-center gap-3">
               {renderThemeToggleButton()}
+              {renderLanguageToggleButton()}
               <div className="hidden md:flex gap-3">
-              <button onClick={() => beginGoogleAuth('login')} className="px-5 py-2.5 border border-stone-200 rounded-xl font-bold text-stone-700 hover:bg-stone-50 transition-colors">Login</button>
-              <button onClick={() => beginGoogleAuth('register')} className="px-5 py-2.5 bg-stone-900 text-white rounded-xl font-bold hover:bg-stone-800 transition-colors">Register</button>
+              <button onClick={() => beginGoogleAuth('login')} className="px-5 py-2.5 border border-stone-200 rounded-xl font-bold text-stone-700 hover:bg-stone-50 transition-colors">{isSpanish ? 'Ingresar' : 'Login'}</button>
+              <button onClick={() => beginGoogleAuth('register')} className="px-5 py-2.5 bg-stone-900 text-white rounded-xl font-bold hover:bg-stone-800 transition-colors">{isSpanish ? 'Registrar' : 'Register'}</button>
               </div>
             </div>
           </header>
@@ -975,8 +1189,8 @@ const App: React.FC = () => {
                 PlannerPro keeps your goals, activities, shared calendar, and budget in one place so both partners always see the same up-to-date plan in realtime.
               </p>
               <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                <button onClick={() => beginGoogleAuth('login')} className="px-6 py-3 border border-stone-300 rounded-2xl font-bold text-stone-700 hover:bg-stone-50 transition-colors">Login with Google</button>
-                <button onClick={() => beginGoogleAuth('register')} className="px-6 py-3 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-colors">Register with Google</button>
+                <button onClick={() => beginGoogleAuth('login')} className="px-6 py-3 border border-stone-300 rounded-2xl font-bold text-stone-700 hover:bg-stone-50 transition-colors">{isSpanish ? 'Ingresar con Google' : 'Login with Google'}</button>
+                <button onClick={() => beginGoogleAuth('register')} className="px-6 py-3 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-colors">{isSpanish ? 'Registrar con Google' : 'Register with Google'}</button>
               </div>
             </div>
 
@@ -1007,7 +1221,7 @@ const App: React.FC = () => {
     if (authIntent === 'login') {
       return (
         <div className="min-h-screen bg-stone-50 flex items-center justify-center p-6 relative">
-          <div className="absolute top-4 right-4">{renderThemeToggleButton()}</div>
+          <div className="absolute top-4 right-4 flex items-center gap-2">{renderLanguageToggleButton()}{renderThemeToggleButton()}</div>
           <div className="w-full max-w-md bg-white border border-stone-200 rounded-3xl p-8 shadow-sm text-center">
             <h2 className="text-2xl font-black text-stone-900 mb-3">No account found</h2>
             <p className="text-stone-600 mb-6">This Google account is not registered yet. Continue with registration to create your planner profile.</p>
@@ -1030,7 +1244,7 @@ const App: React.FC = () => {
 
     return (
       <div className="min-h-screen bg-stone-50 flex items-center justify-center p-6 relative">
-        <div className="absolute top-4 right-4">{renderThemeToggleButton()}</div>
+          <div className="absolute top-4 right-4 flex items-center gap-2">{renderLanguageToggleButton()}{renderThemeToggleButton()}</div>
         <div className="w-full max-w-lg bg-white border border-stone-200 rounded-3xl p-8 shadow-sm">
           <h2 className="text-3xl font-black text-stone-900 mb-2">Create your profile</h2>
           <p className="text-stone-600 mb-2">You are signed in with Google, but your Planner profile is not created yet.</p>
@@ -1058,7 +1272,7 @@ const App: React.FC = () => {
   if (!profile.planner_id) {
     return (
       <div className="min-h-screen bg-stone-50 flex items-center justify-center p-6 relative">
-        <div className="absolute top-4 right-4">{renderThemeToggleButton()}</div>
+        <div className="absolute top-4 right-4 flex items-center gap-2">{renderLanguageToggleButton()}{renderThemeToggleButton()}</div>
         <div className="w-full max-w-2xl bg-white border border-stone-200 rounded-3xl p-8 md:p-10 shadow-sm">
           {linkMode === 'choose' && (
             <>
@@ -1125,13 +1339,14 @@ const App: React.FC = () => {
           <span className="font-black text-stone-900 tracking-tight">PlannerPro</span>
         </div>
         <div className="flex items-center gap-2">
+          {renderLanguageToggleButton()}
           {renderThemeToggleButton()}
-          <button onClick={() => setIsProfileModalOpen(true)} className="px-2.5 py-1.5 text-[11px] rounded-full border border-stone-200 bg-stone-50 font-bold">Profile</button>
-          <button onClick={signOut} className="px-2.5 py-1.5 text-[11px] rounded-full border border-stone-200 bg-stone-50 font-bold">Logout</button>
+          <button onClick={() => setIsProfileModalOpen(true)} className="px-2.5 py-1.5 text-[11px] rounded-full border border-stone-200 bg-stone-50 font-bold">{isSpanish ? 'Perfil' : 'Profile'}</button>
+          <button onClick={signOut} className="px-2.5 py-1.5 text-[11px] rounded-full border border-stone-200 bg-stone-50 font-bold">{isSpanish ? 'Salir' : 'Logout'}</button>
           <button
             onClick={() => setIsProfileModalOpen(true)}
             className="rounded-full"
-            title="Open profile"
+            title={isSpanish ? 'Abrir perfil' : 'Open profile'}
           >
             <img className="h-8 w-8 rounded-full ring-2 ring-emerald-500 object-cover" src={state.currentUser.avatar} alt={state.currentUser.name} />
           </button>
@@ -1143,6 +1358,7 @@ const App: React.FC = () => {
         setCurrentTab={setCurrentTab}
         currentUser={state.currentUser}
         partner={state.partner}
+        language={language}
         switchUser={() => {}}
         showSwitchUser={false}
         onProfileClick={() => setIsProfileModalOpen(true)}
@@ -1153,35 +1369,67 @@ const App: React.FC = () => {
           <header className="hidden md:flex md:items-center justify-between gap-4">
             <div className="hidden md:block">
               <h1 className="text-3xl font-black text-stone-900 capitalize tracking-tight">{currentTab}</h1>
-              <p className="text-stone-500 font-medium">Welcome back, {state.currentUser.name}</p>
+              <p className="text-stone-500 font-medium">{isSpanish ? 'Bienvenido de nuevo' : 'Welcome back'}, {state.currentUser.name}</p>
             </div>
             <div className="flex items-center gap-4 bg-white p-2 rounded-2xl shadow-sm border border-stone-200">
+              {renderLanguageToggleButton()}
               {renderThemeToggleButton()}
-              <button onClick={() => setIsProfileModalOpen(true)} className="px-4 py-2 text-xs rounded-xl border border-stone-200 text-stone-600 font-bold hover:bg-stone-50">Profile</button>
-              <button onClick={signOut} className="px-4 py-2 text-xs rounded-xl border border-stone-200 text-stone-600 font-bold hover:bg-stone-50">Logout</button>
+              <button onClick={() => setIsProfileModalOpen(true)} className="px-4 py-2 text-xs rounded-xl border border-stone-200 text-stone-600 font-bold hover:bg-stone-50">{isSpanish ? 'Perfil' : 'Profile'}</button>
+              <button onClick={signOut} className="px-4 py-2 text-xs rounded-xl border border-stone-200 text-stone-600 font-bold hover:bg-stone-50">{isSpanish ? 'Salir' : 'Logout'}</button>
             </div>
           </header>
 
           <section className="animate-in fade-in duration-500">
-            {currentTab === 'calendar' && <CalendarView state={state} actions={actions} memberProfiles={memberProfiles} />}
-            {currentTab === 'activities' && <ActivityDB state={state} actions={actions} />}
-            {currentTab === 'budget' && <BudgetDashboard state={state} actions={actions} isDarkMode={isDarkMode} />}
-            {currentTab === 'goals' && <GoalsSystem state={state} actions={actions} />}
+            {currentTab === 'calendar' && (
+              <CalendarView
+                state={state}
+                actions={actions}
+                language={language}
+                highlightScheduling={isTutorialOpen && currentTutorialStep?.targetTab === 'calendar'}
+                memberProfiles={memberProfiles}
+                onOpenGoals={() => setCurrentTab('goals')}
+              />
+            )}
+            {currentTab === 'activities' && (
+              <ActivityDB
+                state={state}
+                actions={actions}
+                language={language}
+                highlightAddButton={isTutorialOpen && currentTutorialStep?.targetTab === 'activities'}
+              />
+            )}
+            {currentTab === 'budget' && (
+              <BudgetDashboard
+                state={state}
+                actions={actions}
+                isDarkMode={isDarkMode}
+                language={language}
+                highlightBudgetActions={isTutorialOpen && currentTutorialStep?.targetTab === 'budget'}
+              />
+            )}
+            {currentTab === 'goals' && (
+              <GoalsSystem
+                state={state}
+                actions={actions}
+                language={language}
+                highlightGoalActions={isTutorialOpen && currentTutorialStep?.targetTab === 'goals'}
+              />
+            )}
           </section>
 
           <footer className="pt-8 border-t border-stone-200 hidden md:block">
-            <h3 className="text-[10px] font-black text-stone-400 mb-4 uppercase tracking-[0.2em]">Recent Activity</h3>
+            <h3 className="text-[10px] font-black text-stone-400 mb-4 uppercase tracking-[0.2em]">{isSpanish ? 'Actividad Reciente' : 'Recent Activity'}</h3>
             <div className="space-y-3">
               {state.logs.slice(0, 5).map(log => (
                 <div key={log.id} className="flex items-center gap-3 text-sm text-stone-600">
                   <span className="font-black text-stone-900">{log.userName}</span>
-                  <span className="font-medium">{log.message}</span>
+                  <span className="font-medium">{localizeLogMessage(log.message)}</span>
                   <span className="text-stone-400 text-xs ml-auto font-bold">
                     {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
               ))}
-              {state.logs.length === 0 && <p className="text-stone-400 text-sm font-medium">No activity yet.</p>}
+              {state.logs.length === 0 && <p className="text-stone-400 text-sm font-medium">{isSpanish ? 'Aún no hay actividad.' : 'No activity yet.'}</p>}
             </div>
           </footer>
         </div>
@@ -1205,10 +1453,10 @@ const App: React.FC = () => {
       {generatedInviteCode && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-5">
           <div className="w-full max-w-lg bg-white rounded-3xl border border-stone-200 shadow-2xl p-8 text-center">
-            <h3 className="text-2xl font-black text-stone-900">Planner Created 🎉</h3>
-            <p className="text-stone-600 mt-2">Share this code with one person only. This code can be used once.</p>
+            <h3 className="text-2xl font-black text-stone-900">{isSpanish ? 'Planner Creado 🎉' : 'Planner Created 🎉'}</h3>
+            <p className="text-stone-600 mt-2">{isSpanish ? 'Comparte este código con solo una persona. Este código se puede usar una vez.' : 'Share this code with one person only. This code can be used once.'}</p>
             <div className="mt-6 bg-stone-900 text-white rounded-2xl py-4 px-6 text-2xl font-black tracking-[0.3em]">{generatedInviteCode}</div>
-            <button onClick={() => setGeneratedInviteCode(null)} className="mt-6 px-6 py-3 bg-emerald-600 text-white rounded-xl font-bold">Continue to Dashboard</button>
+            <button onClick={() => setGeneratedInviteCode(null)} className="mt-6 px-6 py-3 bg-emerald-600 text-white rounded-xl font-bold">{isSpanish ? 'Continuar al Panel' : 'Continue to Dashboard'}</button>
           </div>
         </div>
       )}
@@ -1217,18 +1465,18 @@ const App: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[80] p-5">
           <div className="w-full max-w-xl bg-white rounded-3xl border border-stone-200 shadow-2xl p-8">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-2xl font-black text-stone-900">Edit Profile</h3>
+              <h3 className="text-2xl font-black text-stone-900">{isSpanish ? 'Editar Perfil' : 'Edit Profile'}</h3>
               <button onClick={() => setIsProfileModalOpen(false)} className="text-stone-400 hover:text-stone-900 text-2xl">✕</button>
             </div>
 
             <div className="space-y-5">
               {isWaitingForPartner && (
                 <div className={`rounded-2xl border p-4 ${isDarkMode ? 'border-emerald-500/30 bg-emerald-900/20' : 'border-emerald-200 bg-emerald-50/70'}`}>
-                  <p className={`text-[11px] font-black uppercase tracking-[0.2em] ${isDarkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>Invite your partner</p>
-                  <p className={`text-sm mt-1 ${isDarkMode ? 'text-emerald-100/90' : 'text-emerald-800'}`}>Share this code. It disappears once your partner links.</p>
+                  <p className={`text-[11px] font-black uppercase tracking-[0.2em] ${isDarkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>{isSpanish ? 'Invita a tu pareja' : 'Invite your partner'}</p>
+                  <p className={`text-sm mt-1 ${isDarkMode ? 'text-emerald-100/90' : 'text-emerald-800'}`}>{isSpanish ? 'Comparte este código. Desaparece cuando tu pareja se vincula.' : 'Share this code. It disappears once your partner links.'}</p>
                   <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
                     <div className="flex-1 rounded-xl bg-stone-900 text-white px-4 py-3 text-center font-black tracking-[0.2em] text-base">
-                      {profileInviteLoading ? 'Generating...' : (profileInviteCode || 'Unavailable')}
+                      {profileInviteLoading ? (isSpanish ? 'Generando...' : 'Generating...') : (profileInviteCode || (isSpanish ? 'No disponible' : 'Unavailable'))}
                     </div>
                     <button
                       onClick={() => {
@@ -1238,14 +1486,14 @@ const App: React.FC = () => {
                       disabled={!profileInviteCode}
                       className={`px-4 py-3 rounded-xl border font-bold disabled:opacity-60 ${isDarkMode ? 'border-emerald-500/40 text-emerald-300 bg-slate-900/70' : 'border-emerald-300 text-emerald-700 bg-white'}`}
                     >
-                      Copy
+                      {isSpanish ? 'Copiar' : 'Copy'}
                     </button>
                   </div>
                 </div>
               )}
 
               <div>
-                <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2">Profile Photo</label>
+                <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2">{isSpanish ? 'Foto de Perfil' : 'Profile Photo'}</label>
                 <div className="flex items-center gap-4">
                   <img
                     src={profileAvatarInput || state.currentUser.avatar || FALLBACK_AVATAR}
@@ -1262,7 +1510,7 @@ const App: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2">Birthday (Optional)</label>
+                <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2">{isSpanish ? 'Cumpleaños (Opcional)' : 'Birthday (Optional)'}</label>
                 <input
                   type="date"
                   value={profileBirthdayInput}
@@ -1272,12 +1520,12 @@ const App: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2">Phone (Optional)</label>
+                <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2">{isSpanish ? 'Teléfono (Opcional)' : 'Phone (Optional)'}</label>
                 <input
                   type="tel"
                   value={profilePhoneInput}
                   onChange={(e) => setProfilePhoneInput(e.target.value)}
-                  placeholder="e.g. +1 555 123 4567"
+                  placeholder={isSpanish ? 'ej. +34 600 123 456' : 'e.g. +1 555 123 4567'}
                   className="w-full border-2 border-stone-200 bg-stone-50 rounded-2xl px-5 py-3 font-bold outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500"
                 />
               </div>
@@ -1288,15 +1536,119 @@ const App: React.FC = () => {
                 onClick={() => setIsProfileModalOpen(false)}
                 className="flex-1 py-3 border border-stone-200 rounded-xl font-bold text-stone-600"
               >
-                Cancel
+                {isSpanish ? 'Cancelar' : 'Cancel'}
               </button>
               <button
                 onClick={saveProfileDetails}
                 disabled={profileSaveLoading}
                 className="flex-1 py-3 bg-stone-900 text-white rounded-xl font-bold disabled:opacity-60"
               >
-                {profileSaveLoading ? 'Saving...' : 'Save Profile'}
+                {profileSaveLoading ? (isSpanish ? 'Guardando...' : 'Saving...') : (isSpanish ? 'Guardar Perfil' : 'Save Profile')}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isTutorialOpen && !generatedInviteCode && (
+        <div className="fixed inset-0 pointer-events-none z-[90] p-4 md:p-6 flex items-end justify-end">
+          <div className="pointer-events-auto w-full max-w-md bg-white border border-stone-200 rounded-3xl shadow-2xl p-6">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <p className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em]">
+                  {isSpanish ? 'Tutorial de Inicio' : 'Getting Started'}
+                </p>
+                <p className="text-xs text-stone-500 mt-1">
+                  {isSpanish
+                    ? `Paso ${tutorialStepIndex + 1} de ${tutorialSteps.length}`
+                    : `Step ${tutorialStepIndex + 1} of ${tutorialSteps.length}`}
+                </p>
+              </div>
+              <button
+                onClick={closeTutorial}
+                className="text-xs font-bold text-stone-500 hover:text-stone-900"
+              >
+                {isSpanish ? 'Saltar' : 'Skip'}
+              </button>
+            </div>
+
+            <div className="mb-5 h-2 bg-stone-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-emerald-600 transition-all"
+                style={{ width: `${((tutorialStepIndex + 1) / tutorialSteps.length) * 100}%` }}
+              />
+            </div>
+
+            <h3 className="text-xl md:text-2xl font-black text-stone-900 tracking-tight">
+              {currentTutorialStep.title}
+            </h3>
+            <p className="mt-3 text-stone-600 text-sm leading-relaxed">
+              {currentTutorialStep.description}
+            </p>
+
+            <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+              <p className="text-[10px] font-black text-emerald-700 uppercase tracking-[0.2em]">
+                {isSpanish ? '¿Para qué usarlo?' : 'What it is useful for'}
+              </p>
+              <p className="text-sm text-emerald-800 mt-1 leading-relaxed">
+                {currentTutorialStep.useCase}
+              </p>
+            </div>
+
+            {currentTutorialStep.targetTab && (
+              <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                <button
+                  onClick={() => setCurrentTab(currentTutorialStep.targetTab)}
+                  className="px-4 py-2.5 rounded-xl bg-stone-900 text-white font-bold text-sm hover:bg-stone-800"
+                >
+                  {currentTutorialStep.actionLabel}
+                </button>
+                <span className={`text-sm font-bold ${currentTutorialStep.completed ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  {currentTutorialStep.completed
+                    ? (isSpanish ? '✅ Tarea completada' : '✅ Task completed')
+                    : (currentTutorialStep.completionHint || '')}
+                </span>
+              </div>
+            )}
+
+            <label className="mt-5 inline-flex items-center gap-2 text-sm text-stone-600 font-medium select-none">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
+                checked={dontShowTutorialAgain}
+                onChange={(e) => setDontShowTutorialAgain(e.target.checked)}
+              />
+              <span>{isSpanish ? 'No mostrar de nuevo' : "Don’t show again"}</span>
+            </label>
+
+            <div className="mt-5 flex items-center justify-between gap-3">
+              <button
+                onClick={() => setTutorialStepIndex((prev) => Math.max(0, prev - 1))}
+                disabled={tutorialStepIndex === 0}
+                className="px-5 py-2.5 rounded-xl border border-stone-200 text-stone-600 font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isSpanish ? 'Anterior' : 'Back'}
+              </button>
+
+              {isLastTutorialStep ? (
+                <button
+                  onClick={closeTutorial}
+                  className="px-6 py-2.5 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700"
+                >
+                  {isSpanish ? 'Finalizar' : 'Finish'}
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    if (!isCurrentStepComplete) return;
+                    setTutorialStepIndex((prev) => Math.min(tutorialSteps.length - 1, prev + 1));
+                  }}
+                  disabled={!isCurrentStepComplete}
+                  className="px-6 py-2.5 rounded-xl bg-stone-900 text-white font-bold hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isSpanish ? 'Siguiente' : 'Next'}
+                </button>
+              )}
             </div>
           </div>
         </div>

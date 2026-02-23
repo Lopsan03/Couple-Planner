@@ -21,9 +21,12 @@ const formatCurrencyCompact = (value: number) =>
 interface GoalsSystemProps {
   state: PlannerState;
   actions: any;
+  language: 'en' | 'es';
+  highlightGoalActions?: boolean;
 }
 
-const GoalsSystem: React.FC<GoalsSystemProps> = ({ state, actions }) => {
+const GoalsSystem: React.FC<GoalsSystemProps> = ({ state, actions, language, highlightGoalActions = false }) => {
+  const isSpanish = language === 'es';
   const [activeTab, setActiveTab] = useState<'shared' | 'individual'>('shared');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
@@ -49,13 +52,13 @@ const GoalsSystem: React.FC<GoalsSystemProps> = ({ state, actions }) => {
           onClick={() => setActiveTab('shared')}
           className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'shared' ? 'bg-stone-900 text-white shadow-md' : 'text-stone-500'}`}
         >
-          Shared Goals
+          {isSpanish ? 'Metas Compartidas' : 'Shared Goals'}
         </button>
         <button 
           onClick={() => setActiveTab('individual')}
           className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'individual' ? 'bg-stone-900 text-white shadow-md' : 'text-stone-500'}`}
         >
-          Individual Goals
+          {isSpanish ? 'Metas Individuales' : 'Individual Goals'}
         </button>
       </div>
 
@@ -67,14 +70,15 @@ const GoalsSystem: React.FC<GoalsSystemProps> = ({ state, actions }) => {
             ownerName={getOwnerName(goal)}
             isOwner={activeTab === 'shared' || goal.userId === state.currentUser.id}
             onClick={() => setSelectedGoalId(goal.id)}
+            language={language}
           />
         ))}
         <button 
           onClick={() => setIsModalOpen(true)}
-          className="h-full min-h-[220px] border-2 border-dashed border-stone-200 rounded-3xl flex flex-col items-center justify-center gap-3 text-stone-400 hover:border-emerald-500 hover:text-emerald-500 transition-all bg-stone-50/50 group"
+          className={`h-full min-h-[220px] border-2 border-dashed border-stone-200 rounded-3xl flex flex-col items-center justify-center gap-3 text-stone-400 hover:border-emerald-500 hover:text-emerald-500 transition-all bg-stone-50/50 group ${highlightGoalActions ? 'ring-4 ring-emerald-300 animate-pulse' : ''}`}
         >
           <span className="text-4xl group-hover:scale-110 transition-transform">🎯</span>
-          <span className="font-bold">Set a New {activeTab === 'shared' ? 'Shared' : 'Individual'} Goal</span>
+          <span className="font-bold">{isSpanish ? `Crear Nueva Meta ${activeTab === 'shared' ? 'Compartida' : 'Individual'}` : `Set a New ${activeTab === 'shared' ? 'Shared' : 'Individual'} Goal`}</span>
         </button>
       </div>
 
@@ -84,6 +88,7 @@ const GoalsSystem: React.FC<GoalsSystemProps> = ({ state, actions }) => {
           onClose={() => setIsModalOpen(false)} 
           onSave={activeTab === 'shared' ? actions.addSharedGoal : actions.addIndividualGoal}
           currentUser={state.currentUser}
+          language={language}
         />
       )}
 
@@ -95,15 +100,24 @@ const GoalsSystem: React.FC<GoalsSystemProps> = ({ state, actions }) => {
           onUpdate={activeTab === 'shared' ? actions.updateSharedGoal : actions.updateIndividualGoal}
           onDelete={activeTab === 'shared' ? actions.deleteSharedGoal : actions.deleteIndividualGoal}
           currentUser={state.currentUser}
+          language={language}
         />
       )}
     </div>
   );
 };
 
-const GoalCard = ({ goal, ownerName, isOwner, onClick }: any) => {
+const GoalCard = ({ goal, ownerName, isOwner, onClick, language }: any) => {
+  const isSpanish = language === 'es';
+  const capitalizeWords = (value: string) =>
+    value.replace(/\b\p{L}/gu, (char) => char.toUpperCase());
+
+  const formatDateLabel = (dateInput: string, options?: Intl.DateTimeFormatOptions) => {
+    const locale = isSpanish ? 'es-ES' : undefined;
+    return capitalizeWords(new Intl.DateTimeFormat(locale, options).format(new Date(dateInput)));
+  };
   const mainIcon = goal.financialTarget ? '💰' : '🎯';
-  const dueDateText = new Date(goal.targetDate).toLocaleDateString();
+  const dueDateText = formatDateLabel(goal.targetDate);
   const dueTimeText = goal.targetTime ? ` ${goal.targetTime}` : '';
   
   return (
@@ -156,7 +170,15 @@ const GoalCard = ({ goal, ownerName, isOwner, onClick }: any) => {
   );
 };
 
-const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUser }: any) => {
+const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUser, language }: any) => {
+  const isSpanish = language === 'es';
+  const capitalizeWords = (value: string) =>
+    value.replace(/\b\p{L}/gu, (char) => char.toUpperCase());
+
+  const formatDateLabel = (dateInput: string, options?: Intl.DateTimeFormatOptions) => {
+    const locale = isSpanish ? 'es-ES' : undefined;
+    return capitalizeWords(new Intl.DateTimeFormat(locale, options).format(new Date(dateInput)));
+  };
   const [inputValue, setInputValue] = useState('');
   const [subtaskDueDate, setSubtaskDueDate] = useState('');
   const [subtaskStartTime, setSubtaskStartTime] = useState('11:00');
@@ -312,7 +334,7 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
               </div>
               <div className="flex-1 min-w-0 text-center md:text-left">
                 <h2 className="text-3xl md:text-5xl font-black text-stone-900 mb-4 tracking-tight leading-tight">{goal.title}</h2>
-                <p className="text-stone-500 text-lg md:text-2xl leading-relaxed max-w-4xl">{goal.description || 'No description provided.'}</p>
+                <p className="text-stone-500 text-lg md:text-2xl leading-relaxed max-w-4xl">{goal.description || (isSpanish ? 'Sin descripción.' : 'No description provided.')}</p>
               </div>
             </div>
 
@@ -323,10 +345,10 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
               <div className="lg:col-span-7 flex flex-col bg-stone-50/50 rounded-[2.5rem] md:rounded-[3rem] border border-stone-200/50 shadow-inner overflow-hidden">
                 <header className="px-8 py-6 border-b border-stone-100 flex justify-between items-center bg-white/60 backdrop-blur-md sticky top-0 z-10">
                   <h4 className="font-black text-stone-900 uppercase text-[11px] tracking-[0.25em]">
-                    {goal.financialTarget ? 'Contribution Ledger' : 'Milestone Checklist'}
+                    {goal.financialTarget ? (isSpanish ? 'Registro de Aportes' : 'Contribution Ledger') : (isSpanish ? 'Lista de Hitos' : 'Milestone Checklist')}
                   </h4>
                   <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-4 py-1.5 rounded-full uppercase">
-                    {goal.financialTarget ? `${(goal.contributions || []).length} Records` : `${(goal.tasks || []).length} Items`}
+                    {goal.financialTarget ? `${(goal.contributions || []).length} ${isSpanish ? 'Registros' : 'Records'}` : `${(goal.tasks || []).length} ${isSpanish ? 'Elementos' : 'Items'}`}
                   </span>
                 </header>
 
@@ -337,7 +359,7 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
                         <div key={c.id} className="flex justify-between items-center p-6 bg-white rounded-[2rem] border border-stone-100 shadow-sm transition-all hover:border-emerald-200 hover:shadow-md animate-in slide-in-from-bottom-2">
                           <div>
                             <p className="text-xl sm:text-2xl md:text-3xl font-black text-emerald-700 tracking-tight break-all">+ {formatCurrency(c.amount)}</p>
-                            <p className="text-[11px] text-stone-400 uppercase font-black tracking-widest mt-1.5">By {c.userName} • {new Date(c.date).toLocaleDateString()}</p>
+                            <p className="text-[11px] text-stone-400 uppercase font-black tracking-widest mt-1.5">{isSpanish ? 'Por' : 'By'} {c.userName} • {formatDateLabel(c.date)}</p>
                           </div>
                           <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 font-black text-2xl">✓</div>
                         </div>
@@ -345,7 +367,7 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
                     ) : (
                       <div className="h-full py-20 flex flex-col items-center justify-center text-stone-300 opacity-60 space-y-5">
                         <span className="text-8xl">💵</span>
-                        <p className="text-xl font-bold italic tracking-tight">Record your first contribution</p>
+                        <p className="text-xl font-bold italic tracking-tight">{isSpanish ? 'Registra tu primer aporte' : 'Record your first contribution'}</p>
                       </div>
                     )
                   ) : (
@@ -369,7 +391,7 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
                             {task.text}
                             {task.dueDate && (
                               <span className="block text-[10px] font-black uppercase tracking-widest text-stone-400 mt-1">
-                                Due {new Date(task.dueDate).toLocaleDateString()}{task.startTime ? ` ${task.startTime}` : ''}{task.endTime ? ` - ${task.endTime}` : ''}
+                                {isSpanish ? 'Vence' : 'Due'} {formatDateLabel(task.dueDate)}{task.startTime ? ` ${task.startTime}` : ''}{task.endTime ? ` - ${task.endTime}` : ''}
                               </span>
                             )}
                           </span>
@@ -386,7 +408,7 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
                     ) : (
                       <div className="h-full py-20 flex flex-col items-center justify-center text-stone-300 opacity-60 space-y-5">
                         <span className="text-8xl">🎯</span>
-                        <p className="text-xl font-bold italic tracking-tight">Set your first milestone</p>
+                        <p className="text-xl font-bold italic tracking-tight">{isSpanish ? 'Define tu primer hito' : 'Set your first milestone'}</p>
                       </div>
                     )
                   )}
@@ -399,7 +421,7 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
                       <div className="flex flex-col sm:flex-row gap-4">
                         <input 
                           type="number"
-                          placeholder="Amount in Dollars ($)..."
+                          placeholder={isSpanish ? 'Monto en dólares ($)...' : 'Amount in Dollars ($)...'}
                           className="flex-1 bg-stone-50 border-2 border-stone-200 rounded-[1.5rem] px-8 py-5 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all text-base font-bold shadow-sm"
                           value={inputValue}
                           onChange={e => setInputValue(e.target.value)}
@@ -409,7 +431,7 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
                           onClick={handleAction}
                           className="bg-stone-900 text-white px-10 py-5 rounded-[1.5rem] font-black hover:bg-stone-800 transition-all transform active:scale-95 shadow-xl flex items-center justify-center uppercase tracking-[0.2em] text-[11px] shrink-0"
                         >
-                          Add Cash
+                          {isSpanish ? 'Agregar Dinero' : 'Add Cash'}
                         </button>
                       </div>
                     ) : (
@@ -419,7 +441,7 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
                             <label className="block text-[10px] font-black text-stone-400 uppercase tracking-[0.2em]">Subtask</label>
                             <input 
                               type="text"
-                              placeholder="What is the next step?..."
+                              placeholder={isSpanish ? '¿Cuál es el siguiente paso?...' : 'What is the next step?...'}
                               className="w-full h-[60px] bg-stone-50 border-2 border-stone-200 rounded-[1.25rem] px-6 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all text-base font-bold shadow-sm"
                               value={inputValue}
                               onChange={e => setInputValue(e.target.value)}
@@ -467,11 +489,11 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
                             onClick={handleAction}
                             className="w-full sm:w-auto min-w-[220px] h-[60px] bg-stone-900 text-white rounded-[1.25rem] px-8 font-black hover:bg-stone-800 transition-all transform active:scale-95 shadow-xl flex items-center justify-center uppercase tracking-[0.2em] text-[10px]"
                           >
-                            Add Item
+                            {isSpanish ? 'Agregar Elemento' : 'Add Item'}
                           </button>
                         </div>
 
-                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-[0.15em]">Select a date to enable start and end time</p>
+                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-[0.15em]">{isSpanish ? 'Selecciona una fecha para habilitar hora de inicio y fin' : 'Select a date to enable start and end time'}</p>
                       </div>
                     )}
                   </div>
@@ -487,13 +509,13 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
                         onClick={() => setIsEditingGoal(prev => !prev)}
                         className="px-5 py-2.5 rounded-xl border border-stone-200 text-stone-700 font-bold hover:bg-stone-50"
                       >
-                        {isEditingGoal ? 'Cancel Edit' : 'Edit Goal'}
+                        {isEditingGoal ? (isSpanish ? 'Cancelar Edición' : 'Cancel Edit') : (isSpanish ? 'Editar Meta' : 'Edit Goal')}
                       </button>
                       <button
                         onClick={deleteGoal}
                         className="px-5 py-2.5 rounded-xl border border-rose-200 text-rose-700 font-bold hover:bg-rose-50"
                       >
-                        Delete Goal
+                        {isSpanish ? 'Eliminar Meta' : 'Delete Goal'}
                       </button>
                     </div>
 
@@ -503,13 +525,13 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
                           className="w-full border-2 border-stone-200 bg-stone-50 rounded-xl px-4 py-3 font-bold outline-none"
                           value={editFormData.title}
                           onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
-                          placeholder="Goal title"
+                          placeholder={isSpanish ? 'Título de la meta' : 'Goal title'}
                         />
                         <textarea
                           className="w-full border-2 border-stone-200 bg-stone-50 rounded-xl px-4 py-3 font-medium outline-none"
                           value={editFormData.description}
                           onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
-                          placeholder="Description"
+                          placeholder={isSpanish ? 'Descripción' : 'Description'}
                           rows={3}
                         />
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -541,7 +563,7 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
                               className="w-full border-2 border-stone-200 bg-stone-50 rounded-xl px-4 py-3 font-bold outline-none"
                               value={editFormData.financialTarget}
                               onChange={(e) => setEditFormData({ ...editFormData, financialTarget: e.target.value })}
-                              placeholder="Savings target"
+                              placeholder={isSpanish ? 'Meta de ahorro' : 'Savings target'}
                             />
                           )}
                         </div>
@@ -549,7 +571,7 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
                           onClick={saveGoalDetails}
                           className="w-full py-3 bg-stone-900 text-white rounded-xl font-bold hover:bg-stone-800"
                         >
-                          Save Changes
+                          {isSpanish ? 'Guardar Cambios' : 'Save Changes'}
                         </button>
                       </div>
                     )}
@@ -580,7 +602,7 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
                     </div>
                     <div className="space-y-2 text-right">
                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Due Date</p>
-                      <p className="text-sm font-black text-stone-900 uppercase tracking-tight">{new Date(goal.targetDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}{goal.targetTime ? ` ${goal.targetTime}` : ''}</p>
+                      <p className="text-sm font-black text-stone-900 uppercase tracking-tight">{formatDateLabel(goal.targetDate, { month: 'short', day: 'numeric', year: 'numeric' })}{goal.targetTime ? ` ${goal.targetTime}` : ''}</p>
                     </div>
                   </div>
                 </div>
@@ -590,15 +612,19 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
                     <span className="text-[15rem] leading-none">{mainIcon}</span>
                   </div>
                   <div className="relative z-10 space-y-6">
-                    <h4 className="text-xs font-black text-emerald-400 uppercase tracking-[0.5em] mb-4">Milestone Overview</h4>
+                    <h4 className="text-xs font-black text-emerald-400 uppercase tracking-[0.5em] mb-4">{isSpanish ? 'Resumen de Hitos' : 'Milestone Overview'}</h4>
                     <div className="space-y-3">
                       <p className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tighter tabular-nums leading-tight break-all max-w-full">
                         {goal.financialTarget ? formatCurrencyCompact(goal.currentAmount || 0) : `${(goal.tasks || []).filter((t:any) => t.completed).length}`}
                       </p>
                       <p className="text-stone-400 font-bold text-base md:text-xl tracking-tight leading-snug break-words">
                         {goal.financialTarget 
-                          ? `contributed toward your total target of ${formatCurrency(goal.financialTarget || 0)}` 
-                          : `milestones checked off out of ${(goal.tasks || []).length} planned actions`}
+                          ? isSpanish
+                            ? `aportado hacia tu meta total de ${formatCurrency(goal.financialTarget || 0)}`
+                            : `contributed toward your total target of ${formatCurrency(goal.financialTarget || 0)}`
+                          : isSpanish
+                            ? `hitos completados de ${(goal.tasks || []).length} acciones planificadas`
+                            : `milestones checked off out of ${(goal.tasks || []).length} planned actions`}
                       </p>
                     </div>
                   </div>
@@ -611,20 +637,20 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
         {isDeleteConfirmOpen && (
           <div className="absolute inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-5">
             <div className="w-full max-w-md bg-white border border-stone-200 rounded-3xl shadow-2xl p-7">
-              <h4 className="text-xl font-black text-stone-900">Delete this goal?</h4>
-              <p className="text-sm text-stone-600 mt-2">This action cannot be undone. All related progress and entries for this goal will be removed.</p>
+              <h4 className="text-xl font-black text-stone-900">{isSpanish ? '¿Eliminar esta meta?' : 'Delete this goal?'}</h4>
+              <p className="text-sm text-stone-600 mt-2">{isSpanish ? 'Esta acción no se puede deshacer. Se eliminará todo el progreso y los registros relacionados con esta meta.' : 'This action cannot be undone. All related progress and entries for this goal will be removed.'}</p>
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={() => setIsDeleteConfirmOpen(false)}
                   className="flex-1 py-3 rounded-xl border border-stone-200 text-stone-600 font-bold hover:bg-stone-50"
                 >
-                  Cancel
+                  {isSpanish ? 'Cancelar' : 'Cancel'}
                 </button>
                 <button
                   onClick={confirmDeleteGoal}
                   className="flex-1 py-3 rounded-xl bg-rose-600 text-white font-bold hover:bg-rose-700"
                 >
-                  Delete Goal
+                  {isSpanish ? 'Eliminar Meta' : 'Delete Goal'}
                 </button>
               </div>
             </div>
@@ -635,7 +661,9 @@ const GoalDetailModal = ({ goal, isOwner, onClose, onUpdate, onDelete, currentUs
   );
 };
 
-const GoalModal = ({ type, onClose, onSave, currentUser }: any) => {
+const GoalModal = ({ type, onClose, onSave, currentUser, language }: any) => {
+  const isSpanish = language === 'es';
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<Goal>>({
     title: '',
     description: '',
@@ -656,20 +684,23 @@ const GoalModal = ({ type, onClose, onSave, currentUser }: any) => {
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-3xl p-10 md:p-16 my-auto animate-in fade-in zoom-in-95 duration-200">
-        <h3 className="text-4xl font-black mb-12 text-stone-900 tracking-tight leading-none">Create {type === 'shared' ? 'Shared' : 'Personal'} Goal</h3>
+        <h3 className="text-4xl font-black mb-12 text-stone-900 tracking-tight leading-none">{isSpanish ? `Crear Meta ${type === 'shared' ? 'Compartida' : 'Personal'}` : `Create ${type === 'shared' ? 'Shared' : 'Personal'} Goal`}</h3>
         <div className="space-y-10">
           <div className="space-y-3">
-            <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.3em]">Goal Name</label>
+            <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.3em]">{isSpanish ? 'Nombre de la Meta' : 'Goal Name'}</label>
             <input 
               className="w-full border-2 border-stone-100 rounded-[1.75rem] px-8 py-6 bg-stone-50 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 font-bold text-xl transition-all"
               value={formData.title}
-              onChange={e => setFormData({...formData, title: e.target.value})}
-              placeholder="e.g. Save for Wedding"
+              onChange={e => {
+                setValidationError(null);
+                setFormData({...formData, title: e.target.value});
+              }}
+              placeholder={isSpanish ? 'Ej. Ahorrar para la boda' : 'e.g. Save for Wedding'}
             />
           </div>
           
           <div className="space-y-4">
-            <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.3em]">How will you measure it?</label>
+            <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.3em]">{isSpanish ? '¿Cómo la medirás?' : 'How will you measure it?'}</label>
             <div className="grid grid-cols-2 gap-5">
               <button 
                 onClick={() => {
@@ -678,26 +709,27 @@ const GoalModal = ({ type, onClose, onSave, currentUser }: any) => {
                 }}
                 className={`py-6 rounded-[1.75rem] border-2 font-black text-sm transition-all flex items-center justify-center gap-4 ${isMoney ? 'bg-stone-900 border-stone-900 text-white shadow-2xl scale-[1.03]' : 'bg-white border-stone-100 text-stone-400 hover:border-stone-200'}`}
               >
-                <span className="text-2xl">💰</span> MONEY
+                <span className="text-2xl">💰</span> {isSpanish ? 'DINERO' : 'MONEY'}
               </button>
               <button 
                 onClick={() => setFormData({...formData, financialTarget: undefined})}
                 className={`py-6 rounded-[1.75rem] border-2 font-black text-sm transition-all flex items-center justify-center gap-4 ${!isMoney ? 'bg-stone-900 border-stone-900 text-white shadow-2xl scale-[1.03]' : 'bg-white border-stone-100 text-stone-400 hover:border-stone-200'}`}
               >
-                <span className="text-2xl">🎯</span> TASKS
+                <span className="text-2xl">🎯</span> {isSpanish ? 'TAREAS' : 'TASKS'}
               </button>
             </div>
           </div>
 
           {isMoney && (
             <div className="animate-in slide-in-from-top-4 duration-300 space-y-3">
-              <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.3em]">Target Total ($)</label>
+              <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.3em]">{isSpanish ? 'Meta Total ($)' : 'Target Total ($)'}</label>
               <input 
                 type="number"
                 className="w-full border-2 border-stone-100 rounded-[1.75rem] px-8 py-6 bg-stone-50 outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 font-black text-2xl transition-all"
                 value={financialTargetInput}
                 onChange={e => {
                   const nextValue = e.target.value;
+                  setValidationError(null);
                   setFinancialTargetInput(nextValue);
                   setFormData({
                     ...formData,
@@ -716,23 +748,37 @@ const GoalModal = ({ type, onClose, onSave, currentUser }: any) => {
               </select>
             </div>
             <div className="space-y-3">
-              <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.3em]">Deadline</label>
+              <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.3em]">{isSpanish ? 'Fecha Límite' : 'Deadline'}</label>
               <input type="date" className="w-full border-2 border-stone-100 rounded-[1.75rem] px-7 py-5 bg-stone-50 font-black outline-none" value={formData.targetDate} onChange={e => setFormData({...formData, targetDate: e.target.value})} />
             </div>
             <div className="space-y-3">
-              <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.3em]">Time</label>
+              <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.3em]">{isSpanish ? 'Hora' : 'Time'}</label>
               <input type="time" className="w-full border-2 border-stone-100 rounded-[1.75rem] px-7 py-5 bg-stone-50 font-black outline-none" value={formData.targetTime || '09:00'} onChange={e => setFormData({...formData, targetTime: e.target.value})} />
             </div>
           </div>
         </div>
 
+        {validationError && (
+          <div className="mt-8 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4">
+            <p className="text-[10px] font-black text-rose-600 uppercase tracking-[0.2em]">
+              {isSpanish ? 'Validación' : 'Validation'}
+            </p>
+            <p className="text-sm font-semibold text-rose-700 mt-1">{validationError}</p>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row gap-6 mt-14">
           <button 
             onClick={() => { 
-              if(!formData.title) return alert('Please enter a goal name');
-              if (isMoney && (financialTargetInput.trim() === '' || Number(financialTargetInput) <= 0)) {
-                return alert('Please enter a valid savings target amount');
+              if(!formData.title) {
+                setValidationError(isSpanish ? 'Por favor ingresa un nombre para la meta.' : 'Please enter a goal name.');
+                return;
               }
+              if (isMoney && (financialTargetInput.trim() === '' || Number(financialTargetInput) <= 0)) {
+                setValidationError(isSpanish ? 'Por favor ingresa una meta de ahorro válida.' : 'Please enter a valid savings target amount.');
+                return;
+              }
+              setValidationError(null);
               onSave({ 
                 ...formData, 
                 financialTarget: isMoney ? Number(financialTargetInput) : undefined,
@@ -748,9 +794,9 @@ const GoalModal = ({ type, onClose, onSave, currentUser }: any) => {
             }}
             className="flex-1 bg-emerald-600 text-white py-6 rounded-[1.75rem] font-black shadow-2xl hover:bg-emerald-700 hover:-translate-y-1 active:translate-y-0 transition-all text-xl tracking-tight"
           >
-            CREATE GOAL
+            {isSpanish ? 'CREAR META' : 'CREATE GOAL'}
           </button>
-          <button onClick={onClose} className="px-10 py-6 text-stone-400 font-black uppercase text-[11px] tracking-[0.3em] hover:text-stone-900 transition-colors">CANCEL</button>
+          <button onClick={onClose} className="px-10 py-6 text-stone-400 font-black uppercase text-[11px] tracking-[0.3em] hover:text-stone-900 transition-colors">{isSpanish ? 'CANCELAR' : 'CANCEL'}</button>
         </div>
       </div>
     </div>

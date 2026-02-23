@@ -14,6 +14,7 @@ export interface User {
 export interface Activity {
   id: string;
   name: string;
+  emoji?: string;
   category: ActivityCost;
   estimatedCost: number;
   duration: string;
@@ -80,6 +81,8 @@ export interface Goal {
 
 export interface BudgetConfig {
   monthlyLimit: number;
+  monthlyDefaultLimit?: number;
+  monthlyLimits?: Record<string, number>;
 }
 
 export interface ActivityLog {
