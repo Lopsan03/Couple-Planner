@@ -1586,11 +1586,11 @@ const App: React.FC = () => {
               {currentTutorialStep.description}
             </p>
 
-            <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
-              <p className="text-[10px] font-black text-emerald-700 uppercase tracking-[0.2em]">
+            <div className="mt-5 rounded-2xl border border-stone-200 bg-white shadow-sm p-4">
+              <p className="inline-flex items-center px-2 py-1 rounded-lg bg-emerald-50 text-[10px] font-black text-emerald-700 uppercase tracking-[0.2em]">
                 {isSpanish ? '¿Para qué usarlo?' : 'What it is useful for'}
               </p>
-              <p className="text-sm text-emerald-800 mt-1 leading-relaxed">
+              <p className="text-sm text-stone-700 mt-2 leading-relaxed">
                 {currentTutorialStep.useCase}
               </p>
             </div>
