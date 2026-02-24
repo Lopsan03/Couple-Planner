@@ -106,13 +106,15 @@ const App: React.FC = () => {
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
   const [dontShowTutorialAgain, setDontShowTutorialAgain] = useState(false);
+  const [isMobileTutorialLayout, setIsMobileTutorialLayout] = useState<boolean>(() => window.innerWidth < 768);
+  const [isTutorialMinimized, setIsTutorialMinimized] = useState(false);
 
   const [state, setState] = useState<PlannerState>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) {
       return buildInitialPlannerState(
         { id: 'user-1', name: 'You', avatar: FALLBACK_AVATAR },
-        { id: 'user-2', name: 'Partner', avatar: FALLBACK_AVATAR }
+        { id: 'user-2', name: 'Collaborator', avatar: FALLBACK_AVATAR }
       );
     }
 
@@ -121,7 +123,7 @@ const App: React.FC = () => {
     } catch {
       return buildInitialPlannerState(
         { id: 'user-1', name: 'You', avatar: FALLBACK_AVATAR },
-        { id: 'user-2', name: 'Partner', avatar: FALLBACK_AVATAR }
+        { id: 'user-2', name: 'Collaborator', avatar: FALLBACK_AVATAR }
       );
     }
   });
@@ -159,6 +161,13 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(LANGUAGE_KEY, language);
   }, [language]);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobileTutorialLayout(window.innerWidth < 768);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const renderThemeToggleButton = () => (
     <button
@@ -360,7 +369,7 @@ const App: React.FC = () => {
       return {
         user_id: member.user_id,
         member_slot: member.member_slot,
-        username: userProfile?.username || (member.user_id === session.user.id ? profile.username : 'Partner'),
+        username: userProfile?.username || (member.user_id === session.user.id ? profile.username : 'Collaborator'),
         avatar_url: userProfile?.avatar_url || null,
         birthday: userProfile?.birthday || null,
         phone: userProfile?.phone || null,
@@ -370,10 +379,10 @@ const App: React.FC = () => {
 
     const currentUser = toPlannerUser(me.member_slot, meProfile.username, meProfile.avatar_url);
     const partner = partnerMember
-      ? toPlannerUser(partnerMember.member_slot, partnerProfile?.username || 'Partner', partnerProfile?.avatar_url || FALLBACK_AVATAR)
+      ? toPlannerUser(partnerMember.member_slot, partnerProfile?.username || 'Collaborator', partnerProfile?.avatar_url || FALLBACK_AVATAR)
       : {
           id: me.member_slot === 1 ? 'user-2' : 'user-1',
-          name: 'Waiting for partner',
+          name: 'Invite collaborator',
           avatar: FALLBACK_AVATAR,
         };
 
@@ -757,7 +766,7 @@ const App: React.FC = () => {
     const currentMembers = members || [];
     if (currentMembers.length >= 2) {
       debug('linkWithInviteCode:plannerFull', { plannerId, memberCount: currentMembers.length });
-      setFormError('This planner already has 2 linked users.');
+      setFormError('This workspace already has 2 linked collaborators.');
       setActionLoading(false);
       return;
     }
@@ -797,7 +806,7 @@ const App: React.FC = () => {
 
   const createNewPlanner = async () => {
     if (!session?.user.id || !profile) {
-      setFormError('Unable to create planner right now.');
+      setFormError('Unable to create workspace right now.');
       return;
     }
 
@@ -830,7 +839,7 @@ const App: React.FC = () => {
 
     if (plannerError || !plannerIdFromRpc) {
       debug('createNewPlanner:rpcError', { error: plannerError?.message || null });
-      setFormError(plannerError?.message || 'Could not create planner.');
+      setFormError(plannerError?.message || 'Could not create workspace.');
       setActionLoading(false);
       return;
     }
@@ -1112,6 +1121,7 @@ const App: React.FC = () => {
   const closeTutorial = () => {
     persistTutorialPreference(dontShowTutorialAgain);
     setIsTutorialOpen(false);
+    setIsTutorialMinimized(false);
   };
 
   useEffect(() => {
@@ -1128,6 +1138,7 @@ const App: React.FC = () => {
     setDontShowTutorialAgain(hidden);
     setTutorialStepIndex(0);
     setIsTutorialOpen(!hidden);
+    setIsTutorialMinimized(window.innerWidth < 768 && !hidden);
     tutorialInitializedForUser.current = session.user.id;
   }, [session?.user.id, profile?.planner_id, plannerLoading]);
 
@@ -1168,8 +1179,8 @@ const App: React.FC = () => {
         <div className="max-w-6xl mx-auto px-6 md:px-10 py-10 md:py-16">
           <header className="flex items-center justify-between mb-16">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white font-black text-lg">C</div>
-              <span className="font-black text-xl tracking-tight">PlannerPro</span>
+              <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white font-black text-lg">S</div>
+              <span className="font-black text-xl tracking-tight">SyncLife</span>
             </div>
             <div className="flex items-center gap-3">
               {renderThemeToggleButton()}
@@ -1183,31 +1194,31 @@ const App: React.FC = () => {
 
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
             <div>
-              <p className="inline-flex bg-emerald-100 text-emerald-700 text-xs font-black uppercase tracking-widest px-3 py-1 rounded-full mb-5">Private Couple Workspace</p>
-              <h1 className="text-4xl md:text-6xl font-black leading-tight tracking-tight">Plan life together, in one synced planner.</h1>
+              <p className="inline-flex bg-emerald-100 text-emerald-700 text-xs font-black uppercase tracking-widest px-3 py-1 rounded-full mb-5">Structured Life Operating System</p>
+              <h1 className="text-4xl md:text-6xl font-black leading-tight tracking-tight">Organize your life with clarity, structure, and control.</h1>
               <p className="mt-5 text-lg text-stone-600 leading-relaxed max-w-xl">
-                PlannerPro keeps your goals, activities, shared calendar, and budget in one place so both partners always see the same up-to-date plan in realtime.
+                SyncLife brings your calendar, goals, activities, and budget into one structured workspace. Use it solo by default, and sync with someone you trust when collaboration is needed.
               </p>
               <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                <button onClick={() => beginGoogleAuth('login')} className="px-6 py-3 border border-stone-300 rounded-2xl font-bold text-stone-700 hover:bg-stone-50 transition-colors">{isSpanish ? 'Ingresar con Google' : 'Login with Google'}</button>
-                <button onClick={() => beginGoogleAuth('register')} className="px-6 py-3 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-colors">{isSpanish ? 'Registrar con Google' : 'Register with Google'}</button>
+                <button onClick={() => beginGoogleAuth('login')} className="px-6 py-3 border border-stone-300 rounded-2xl font-bold text-stone-700 hover:bg-stone-50 transition-colors">{isSpanish ? 'Comenzar a organizar tu vida' : 'Start organizing your life'}</button>
+                <button onClick={() => beginGoogleAuth('register')} className="px-6 py-3 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-colors">{isSpanish ? 'Crear tu workspace' : 'Create your workspace'}</button>
               </div>
             </div>
 
             <div className="bg-white border border-stone-200 rounded-3xl p-8 md:p-10 shadow-sm">
-              <h3 className="text-xl font-black text-stone-900 mb-5">How it works</h3>
+              <h3 className="text-xl font-black text-stone-900 mb-5">System workflow</h3>
               <div className="space-y-4 text-stone-600">
                 <div>
-                  <p className="font-bold text-stone-900">1) Authenticate securely</p>
+                  <p className="font-bold text-stone-900">1) Set up your workspace</p>
                   <p className="text-sm">Use your Google account to sign in. No passwords to manage.</p>
                 </div>
                 <div>
-                  <p className="font-bold text-stone-900">2) Link with your partner</p>
-                  <p className="text-sm">Create a planner or join one with a one-time invite code.</p>
+                  <p className="font-bold text-stone-900">2) Structure your system</p>
+                  <p className="text-sm">Manage goals, activities, calendar, and budget in one operating flow.</p>
                 </div>
                 <div>
-                  <p className="font-bold text-stone-900">3) Plan in realtime</p>
-                  <p className="text-sm">Any update to goals, activities, events, or budget appears for both users instantly.</p>
+                  <p className="font-bold text-stone-900">3) Sync when needed</p>
+                  <p className="text-sm">Invite collaborators intentionally to keep everyone aligned in realtime.</p>
                 </div>
               </div>
             </div>
@@ -1224,7 +1235,7 @@ const App: React.FC = () => {
           <div className="absolute top-4 right-4 flex items-center gap-2">{renderLanguageToggleButton()}{renderThemeToggleButton()}</div>
           <div className="w-full max-w-md bg-white border border-stone-200 rounded-3xl p-8 shadow-sm text-center">
             <h2 className="text-2xl font-black text-stone-900 mb-3">No account found</h2>
-            <p className="text-stone-600 mb-6">This Google account is not registered yet. Continue with registration to create your planner profile.</p>
+            <p className="text-stone-600 mb-6">This Google account is not registered yet. Continue with registration to create your SyncLife profile.</p>
             <div className="flex gap-3">
               <button onClick={signOut} className="flex-1 py-3 border border-stone-200 rounded-xl font-bold text-stone-600">Back</button>
               <button
@@ -1247,8 +1258,8 @@ const App: React.FC = () => {
           <div className="absolute top-4 right-4 flex items-center gap-2">{renderLanguageToggleButton()}{renderThemeToggleButton()}</div>
         <div className="w-full max-w-lg bg-white border border-stone-200 rounded-3xl p-8 shadow-sm">
           <h2 className="text-3xl font-black text-stone-900 mb-2">Create your profile</h2>
-          <p className="text-stone-600 mb-2">You are signed in with Google, but your Planner profile is not created yet.</p>
-          <p className="text-stone-600 mb-6">Pick a unique username before linking your planner.</p>
+          <p className="text-stone-600 mb-2">You are signed in with Google, but your SyncLife profile is not set up yet.</p>
+          <p className="text-stone-600 mb-6">Pick a unique username to create your personal workspace.</p>
           <label className="block text-[11px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2">Username</label>
           <input
             type="text"
@@ -1276,20 +1287,20 @@ const App: React.FC = () => {
         <div className="w-full max-w-2xl bg-white border border-stone-200 rounded-3xl p-8 md:p-10 shadow-sm">
           {linkMode === 'choose' && (
             <>
-              <h2 className="text-3xl font-black text-stone-900 mb-2">Link your planner</h2>
-              <p className="text-stone-600 mb-6">Were you invited, or are you starting a new planner?</p>
+              <h2 className="text-3xl font-black text-stone-900 mb-2">Set up your workspace</h2>
+              <p className="text-stone-600 mb-6">You can start solo now or join an existing shared workspace.</p>
             </>
           )}
 
           {linkMode === 'choose' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <button onClick={() => setLinkMode('invited')} className="p-6 rounded-2xl border-2 border-stone-200 hover:border-emerald-500 text-left transition-all">
-                <p className="text-lg font-black text-stone-900">I was invited</p>
-                <p className="text-sm text-stone-600 mt-2">Join an existing planner with an invite code.</p>
+                <p className="text-lg font-black text-stone-900">Join a shared workspace</p>
+                <p className="text-sm text-stone-600 mt-2">Use an invite code from someone you trust.</p>
               </button>
               <button onClick={() => setLinkMode('new')} className="p-6 rounded-2xl border-2 border-stone-200 hover:border-emerald-500 text-left transition-all">
-                <p className="text-lg font-black text-stone-900">I am starting a new planner</p>
-                <p className="text-sm text-stone-600 mt-2">Create your planner and generate a one-time invite code.</p>
+                <p className="text-lg font-black text-stone-900">Start my workspace</p>
+                <p className="text-sm text-stone-600 mt-2">Begin personal planning and invite collaborators later if needed.</p>
               </button>
             </div>
           )}
@@ -1307,7 +1318,7 @@ const App: React.FC = () => {
               <div className="flex gap-3">
                 <button onClick={() => setLinkMode('choose')} className="px-5 py-3 border border-stone-200 rounded-xl font-bold text-stone-600">Back</button>
                 <button onClick={linkWithInviteCode} disabled={actionLoading} className="px-5 py-3 bg-stone-900 text-white rounded-xl font-bold disabled:opacity-60">
-                  {actionLoading ? 'Linking...' : 'Join Planner'}
+                  {actionLoading ? 'Linking...' : 'Join Workspace'}
                 </button>
               </div>
             </div>
@@ -1315,11 +1326,11 @@ const App: React.FC = () => {
 
           {linkMode === 'new' && (
             <div className="space-y-4">
-              <p className="text-sm text-stone-600">A new planner will be created with you as owner. An invite code will be generated for one partner only.</p>
+              <p className="text-sm text-stone-600">A new workspace will be created for you. You can invite collaborators later with a one-time code.</p>
               <div className="flex gap-3">
                 <button onClick={() => setLinkMode('choose')} className="px-5 py-3 border border-stone-200 rounded-xl font-bold text-stone-600">Back</button>
                 <button onClick={createNewPlanner} disabled={actionLoading} className="px-5 py-3 bg-emerald-600 text-white rounded-xl font-bold disabled:opacity-60">
-                  {actionLoading ? 'Creating...' : 'Create Planner'}
+                  {actionLoading ? 'Creating...' : 'Create Workspace'}
                 </button>
               </div>
             </div>
@@ -1335,8 +1346,8 @@ const App: React.FC = () => {
     <div className="flex h-screen overflow-hidden bg-stone-50 flex-col lg:flex-row">
       <header className="lg:hidden bg-white border-b border-stone-200 p-4 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-black text-sm">C</div>
-          <span className="font-black text-stone-900 tracking-tight">PlannerPro</span>
+          <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-black text-sm">S</div>
+          <span className="font-black text-stone-900 tracking-tight">SyncLife</span>
         </div>
         <div className="flex items-center gap-2">
           {renderLanguageToggleButton()}
@@ -1453,10 +1464,10 @@ const App: React.FC = () => {
       {generatedInviteCode && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-5">
           <div className="w-full max-w-lg bg-white rounded-3xl border border-stone-200 shadow-2xl p-8 text-center">
-            <h3 className="text-2xl font-black text-stone-900">{isSpanish ? 'Planner Creado 🎉' : 'Planner Created 🎉'}</h3>
-            <p className="text-stone-600 mt-2">{isSpanish ? 'Comparte este código con solo una persona. Este código se puede usar una vez.' : 'Share this code with one person only. This code can be used once.'}</p>
+            <h3 className="text-2xl font-black text-stone-900">{isSpanish ? 'Workspace Creado 🎉' : 'Workspace Created 🎉'}</h3>
+            <p className="text-stone-600 mt-2">{isSpanish ? 'Comparte este código con un colaborador. Este código se puede usar una vez.' : 'Share this code with a collaborator. This code can be used once.'}</p>
             <div className="mt-6 bg-stone-900 text-white rounded-2xl py-4 px-6 text-2xl font-black tracking-[0.3em]">{generatedInviteCode}</div>
-            <button onClick={() => setGeneratedInviteCode(null)} className="mt-6 px-6 py-3 bg-emerald-600 text-white rounded-xl font-bold">{isSpanish ? 'Continuar al Panel' : 'Continue to Dashboard'}</button>
+            <button onClick={() => setGeneratedInviteCode(null)} className="mt-6 px-6 py-3 bg-emerald-600 text-white rounded-xl font-bold">{isSpanish ? 'Continuar al Workspace' : 'Continue to Workspace'}</button>
           </div>
         </div>
       )}
@@ -1472,8 +1483,8 @@ const App: React.FC = () => {
             <div className="space-y-5">
               {isWaitingForPartner && (
                 <div className={`rounded-2xl border p-4 ${isDarkMode ? 'border-emerald-500/30 bg-emerald-900/20' : 'border-emerald-200 bg-emerald-50/70'}`}>
-                  <p className={`text-[11px] font-black uppercase tracking-[0.2em] ${isDarkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>{isSpanish ? 'Invita a tu pareja' : 'Invite your partner'}</p>
-                  <p className={`text-sm mt-1 ${isDarkMode ? 'text-emerald-100/90' : 'text-emerald-800'}`}>{isSpanish ? 'Comparte este código. Desaparece cuando tu pareja se vincula.' : 'Share this code. It disappears once your partner links.'}</p>
+                  <p className={`text-[11px] font-black uppercase tracking-[0.2em] ${isDarkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>{isSpanish ? 'Invitar colaborador' : 'Invite Collaborator'}</p>
+                  <p className={`text-sm mt-1 ${isDarkMode ? 'text-emerald-100/90' : 'text-emerald-800'}`}>{isSpanish ? 'Comparte este código. Desaparece cuando se una un colaborador.' : 'Share this code. It disappears once a collaborator joins.'}</p>
                   <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
                     <div className="flex-1 rounded-xl bg-stone-900 text-white px-4 py-3 text-center font-black tracking-[0.2em] text-base">
                       {profileInviteLoading ? (isSpanish ? 'Generando...' : 'Generating...') : (profileInviteCode || (isSpanish ? 'No disponible' : 'Unavailable'))}
@@ -1551,108 +1562,149 @@ const App: React.FC = () => {
       )}
 
       {isTutorialOpen && !generatedInviteCode && (
-        <div className="fixed inset-0 pointer-events-none z-[90] p-4 md:p-6 flex items-end justify-end">
-          <div className="pointer-events-auto w-full max-w-md bg-white border border-stone-200 rounded-3xl shadow-2xl p-6">
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <div>
-                <p className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em]">
-                  {isSpanish ? 'Tutorial de Inicio' : 'Getting Started'}
-                </p>
-                <p className="text-xs text-stone-500 mt-1">
-                  {isSpanish
-                    ? `Paso ${tutorialStepIndex + 1} de ${tutorialSteps.length}`
-                    : `Step ${tutorialStepIndex + 1} of ${tutorialSteps.length}`}
-                </p>
-              </div>
-              <button
-                onClick={closeTutorial}
-                className="text-xs font-bold text-stone-500 hover:text-stone-900"
-              >
-                {isSpanish ? 'Saltar' : 'Skip'}
-              </button>
-            </div>
-
-            <div className="mb-5 h-2 bg-stone-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-emerald-600 transition-all"
-                style={{ width: `${((tutorialStepIndex + 1) / tutorialSteps.length) * 100}%` }}
-              />
-            </div>
-
-            <h3 className="text-xl md:text-2xl font-black text-stone-900 tracking-tight">
-              {currentTutorialStep.title}
-            </h3>
-            <p className="mt-3 text-stone-600 text-sm leading-relaxed">
-              {currentTutorialStep.description}
-            </p>
-
-            <div className="mt-5 rounded-2xl border border-stone-200 bg-white shadow-sm p-4">
-              <p className="inline-flex items-center px-2 py-1 rounded-lg bg-emerald-50 text-[10px] font-black text-emerald-700 uppercase tracking-[0.2em]">
-                {isSpanish ? '¿Para qué usarlo?' : 'What it is useful for'}
-              </p>
-              <p className="text-sm text-stone-700 mt-2 leading-relaxed">
-                {currentTutorialStep.useCase}
-              </p>
-            </div>
-
-            {currentTutorialStep.targetTab && (
-              <div className="mt-4 rounded-2xl border border-stone-200 bg-white shadow-sm p-3 space-y-3">
-                <button
-                  onClick={() => setCurrentTab(currentTutorialStep.targetTab)}
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-stone-900 text-white font-bold text-sm hover:bg-stone-800"
-                >
-                  {currentTutorialStep.actionLabel}
-                </button>
-
-                <div className={`rounded-xl px-3 py-2 ${currentTutorialStep.completed ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'}`}>
-                  <span className={`text-sm font-bold ${currentTutorialStep.completed ? 'text-emerald-700' : 'text-amber-700'}`}>
-                    {currentTutorialStep.completed
-                      ? (isSpanish ? '✅ Tarea completada' : '✅ Task completed')
-                      : (currentTutorialStep.completionHint || '')}
-                  </span>
+        <div className="fixed inset-0 pointer-events-none z-[90] p-3 pb-24 md:p-6 md:pb-6 flex items-end justify-end">
+          <div className={`pointer-events-auto w-full ${isMobileTutorialLayout ? 'max-w-[92vw]' : 'max-w-md'} bg-white border border-stone-200 rounded-3xl shadow-2xl p-5 md:p-6 ${isMobileTutorialLayout && !isTutorialMinimized ? 'max-h-[68vh] overflow-y-auto' : ''}`}>
+            {isMobileTutorialLayout && isTutorialMinimized ? (
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em]">
+                    {isSpanish ? 'Guía Activa' : 'Guide Active'}
+                  </p>
+                  <p className="text-xs text-stone-500 mt-1">
+                    {isSpanish
+                      ? `Paso ${tutorialStepIndex + 1} de ${tutorialSteps.length}`
+                      : `Step ${tutorialStepIndex + 1} of ${tutorialSteps.length}`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={closeTutorial}
+                    className="text-xs font-bold text-stone-500 hover:text-stone-900"
+                  >
+                    {isSpanish ? 'Saltar' : 'Skip'}
+                  </button>
+                  <button
+                    onClick={() => setIsTutorialMinimized(false)}
+                    className="px-3 py-1.5 rounded-lg bg-stone-900 text-white text-xs font-bold"
+                  >
+                    {isSpanish ? 'Abrir' : 'Open'}
+                  </button>
                 </div>
               </div>
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-4 mb-4">
+                  <div>
+                    <p className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em]">
+                      {isSpanish ? 'Tutorial de Inicio' : 'Getting Started'}
+                    </p>
+                    <p className="text-xs text-stone-500 mt-1">
+                      {isSpanish
+                        ? `Paso ${tutorialStepIndex + 1} de ${tutorialSteps.length}`
+                        : `Step ${tutorialStepIndex + 1} of ${tutorialSteps.length}`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isMobileTutorialLayout && (
+                      <button
+                        onClick={() => setIsTutorialMinimized(true)}
+                        className="text-xs font-bold text-stone-500 hover:text-stone-900"
+                      >
+                        {isSpanish ? 'Minimizar' : 'Minimize'}
+                      </button>
+                    )}
+                    <button
+                      onClick={closeTutorial}
+                      className="text-xs font-bold text-stone-500 hover:text-stone-900"
+                    >
+                      {isSpanish ? 'Saltar' : 'Skip'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mb-5 h-2 bg-stone-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-600 transition-all"
+                    style={{ width: `${((tutorialStepIndex + 1) / tutorialSteps.length) * 100}%` }}
+                  />
+                </div>
+
+                <h3 className="text-xl md:text-2xl font-black text-stone-900 tracking-tight">
+                  {currentTutorialStep.title}
+                </h3>
+                <p className="mt-3 text-stone-600 text-sm leading-relaxed">
+                  {currentTutorialStep.description}
+                </p>
+
+                <div className="mt-5 rounded-2xl border border-stone-200 bg-white shadow-sm p-4">
+                  <p className="inline-flex items-center px-2 py-1 rounded-lg bg-emerald-50 text-[10px] font-black text-emerald-700 uppercase tracking-[0.2em]">
+                    {isSpanish ? '¿Para qué usarlo?' : 'What it is useful for'}
+                  </p>
+                  <p className="text-sm text-stone-700 mt-2 leading-relaxed">
+                    {currentTutorialStep.useCase}
+                  </p>
+                </div>
+
+                {currentTutorialStep.targetTab && (
+                  <div className="mt-4 rounded-2xl border border-stone-200 bg-white shadow-sm p-3 space-y-3">
+                    <button
+                      onClick={() => setCurrentTab(currentTutorialStep.targetTab)}
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-stone-900 text-white font-bold text-sm hover:bg-stone-800"
+                    >
+                      {currentTutorialStep.actionLabel}
+                    </button>
+
+                    <div className={`rounded-xl px-3 py-2 ${currentTutorialStep.completed ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'}`}>
+                      <span className={`text-sm font-bold ${currentTutorialStep.completed ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        {currentTutorialStep.completed
+                          ? (isSpanish ? '✅ Tarea completada' : '✅ Task completed')
+                          : (currentTutorialStep.completionHint || '')}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <label className="mt-5 inline-flex items-center gap-2 text-sm text-stone-600 font-medium select-none">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
+                    checked={dontShowTutorialAgain}
+                    onChange={(e) => setDontShowTutorialAgain(e.target.checked)}
+                  />
+                  <span>{isSpanish ? 'No mostrar de nuevo' : "Don’t show again"}</span>
+                </label>
+
+                <div className="mt-5 flex items-center justify-between gap-3">
+                  <button
+                    onClick={() => setTutorialStepIndex((prev) => Math.max(0, prev - 1))}
+                    disabled={tutorialStepIndex === 0}
+                    className="px-5 py-2.5 rounded-xl border border-stone-200 text-stone-600 font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {isSpanish ? 'Anterior' : 'Back'}
+                  </button>
+
+                  {isLastTutorialStep ? (
+                    <button
+                      onClick={closeTutorial}
+                      className="px-6 py-2.5 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700"
+                    >
+                      {isSpanish ? 'Finalizar' : 'Finish'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (!isCurrentStepComplete) return;
+                        setTutorialStepIndex((prev) => Math.min(tutorialSteps.length - 1, prev + 1));
+                      }}
+                      disabled={!isCurrentStepComplete}
+                      className="px-6 py-2.5 rounded-xl bg-stone-900 text-white font-bold hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isSpanish ? 'Siguiente' : 'Next'}
+                    </button>
+                  )}
+                </div>
+              </>
             )}
-
-            <label className="mt-5 inline-flex items-center gap-2 text-sm text-stone-600 font-medium select-none">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
-                checked={dontShowTutorialAgain}
-                onChange={(e) => setDontShowTutorialAgain(e.target.checked)}
-              />
-              <span>{isSpanish ? 'No mostrar de nuevo' : "Don’t show again"}</span>
-            </label>
-
-            <div className="mt-5 flex items-center justify-between gap-3">
-              <button
-                onClick={() => setTutorialStepIndex((prev) => Math.max(0, prev - 1))}
-                disabled={tutorialStepIndex === 0}
-                className="px-5 py-2.5 rounded-xl border border-stone-200 text-stone-600 font-bold disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isSpanish ? 'Anterior' : 'Back'}
-              </button>
-
-              {isLastTutorialStep ? (
-                <button
-                  onClick={closeTutorial}
-                  className="px-6 py-2.5 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700"
-                >
-                  {isSpanish ? 'Finalizar' : 'Finish'}
-                </button>
-              ) : (
-                <button
-                  onClick={() => {
-                    if (!isCurrentStepComplete) return;
-                    setTutorialStepIndex((prev) => Math.min(tutorialSteps.length - 1, prev + 1));
-                  }}
-                  disabled={!isCurrentStepComplete}
-                  className="px-6 py-2.5 rounded-xl bg-stone-900 text-white font-bold hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {isSpanish ? 'Siguiente' : 'Next'}
-                </button>
-              )}
-            </div>
           </div>
         </div>
       )}

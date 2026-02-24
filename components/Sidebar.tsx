@@ -16,7 +16,7 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab, currentUser, partner, language, switchUser, showSwitchUser = true, onProfileClick }) => {
   const isSpanish = language === 'es';
   const menuItems = [
-    { id: 'calendar', label: isSpanish ? 'Calendario Compartido' : 'Shared Calendar', icon: '📅' },
+    { id: 'calendar', label: isSpanish ? 'Calendario' : 'Calendar', icon: '📅' },
     { id: 'activities', label: isSpanish ? 'Banco de Actividades' : 'Activity Bank', icon: '🎲' },
     { id: 'budget', label: isSpanish ? 'Plan de Presupuesto' : 'Budget Plan', icon: '📊' },
     { id: 'goals', label: isSpanish ? 'Seguimiento de Metas' : 'Goals Tracker', icon: '🎯' },
@@ -27,9 +27,9 @@ const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab, currentUse
       <div className="p-6 border-b border-stone-100">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
-            C
+            S
           </div>
-          <span className="font-bold text-lg tracking-tight">PlannerPro</span>
+          <span className="font-bold text-lg tracking-tight">SyncLife</span>
         </div>
 
         <div className="space-y-4">
@@ -73,8 +73,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab, currentUse
       </nav>
 
       <div className="p-6 text-xs text-stone-400 border-t border-stone-100">
-        <p>&copy; 2024 Couple Planner Pro</p>
-        <p>{isSpanish ? 'Creado para una mejor coordinación' : 'Built for better alignment'}</p>
+        <p>&copy; 2024 SyncLife</p>
+        <p>{isSpanish ? 'Diseñado para planificación estructurada' : 'Built for structured planning'}</p>
       </div>
     </aside>
   );

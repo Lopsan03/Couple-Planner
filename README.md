@@ -1,6 +1,6 @@
-# Couple Planner Pro
+# SyncLife
 
-Realtime couple planner built with React + Vite + Supabase (Auth, Postgres, Realtime).
+Structured life operating system built with React + Vite + Supabase (Auth, Postgres, Realtime), with optional trusted collaboration.
 
 ## Product Documentation
 
