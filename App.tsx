@@ -14,6 +14,7 @@ const THEME_KEY = 'planner_theme';
 const LANGUAGE_KEY = 'planner_language';
 const TUTORIAL_KEY_PREFIX = 'planner_tutorial_hidden';
 const DEBUG_SYNC = (import.meta.env.VITE_DEBUG_SYNC ?? 'false') === 'true';
+const AUTH_REDIRECT_URL = (import.meta.env.VITE_AUTH_REDIRECT_URL ?? '').trim();
 
 const FALLBACK_AVATAR = 'https://picsum.photos/seed/default-avatar/100/100';
 
@@ -195,11 +196,12 @@ const App: React.FC = () => {
     setFormError(null);
     setAuthIntent(intent);
     setStoredAuthIntent(intent);
+    const redirectTo = AUTH_REDIRECT_URL || window.location.origin;
     debug('beginGoogleAuth', { intent });
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
+        redirectTo,
       },
     });
   };

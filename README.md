@@ -17,6 +17,7 @@ Steps:
 2. Create `.env.local` from `.env.example` and set:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
+   - Optional: `VITE_AUTH_REDIRECT_URL` (e.g. `https://yourdomain.com`)
    - Optional: `VITE_DEBUG_SYNC=false`
 3. In Supabase SQL Editor, run [supabase-schema.sql](supabase-schema.sql).
 4. Start app:
@@ -44,6 +45,7 @@ Example URLs:
 5. Add Environment Variables (Production + Preview):
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
+   - Optional: `VITE_AUTH_REDIRECT_URL` (recommended for stable OAuth redirects)
    - Optional: `VITE_DEBUG_SYNC=false`
 6. Deploy.
 
